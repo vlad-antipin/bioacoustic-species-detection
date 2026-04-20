@@ -23,6 +23,7 @@ def load_metadata():
     df_train = pd.read_csv(DATA_DIR / TRAIN_METADATA_FILE)
     df_train_soundscapes = pd.read_csv(DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE)
     df_taxonomy = pd.read_csv(DATA_DIR / TAXONOMY_FILE)
+
     return df_train, df_train_soundscapes, df_taxonomy
 
 
@@ -51,13 +52,44 @@ def load_soundscape(filename, start: str, end: str, train=True):
 
     return audio
 
-def get_label_encoders():
-    df_taxonomy = pd.read_csv(DATA_DIR / TAXONOMY_FILE)
 
+def is_soundscape(row: pd.Series | pd.DataFrame):
+    assert "filename" in row
+    return "start" in row and "end" in row
+
+
+def load_audio(row: pd.Series, train=True):
+    if is_soundscape(row):
+        return load_soundscape(row["filename"], row["start"], row["end"], train=train)
+    else:
+        return load_train_audio(row["filename"])
+
+
+def get_labels(df, df_taxonomy):
+    
     class_encoder = MultiLabelBinarizer()
     primary_encoder = MultiLabelBinarizer()
 
-    class_encoder.fit(df_taxonomy["class_name"])
-    primary_encoder.fit(df_taxonomy["primary_label"])
+    class_encoder.fit(df_taxonomy["class_name"].apply(lambda x: [x]))
+    primary_encoder.fit(df_taxonomy["primary_label"].apply(lambda x: [x]))
 
-    return class_encoder, primary_encoder
+    primary_to_class = df_taxonomy.set_index("primary_label")["class_name"]
+    
+    # TODO: and secondary labels? - completely ignore them?
+    if is_soundscape(df):
+        y_class = class_encoder.transform(
+            df["primary_label"]
+            .apply(lambda x: x.split(";"))
+            .apply(
+                lambda x: list({primary_to_class[primary_label] for primary_label in x})
+            )
+        )
+
+        y_primary = primary_encoder.transform(
+            df["primary_label"].apply(lambda x: x.split(";"))
+        )
+    else:
+        y_class = class_encoder.transform(df["class_name"].apply(lambda x: [x]))
+        y_primary = primary_encoder.transform(df["primary_label"].apply(lambda x: [x]))
+
+    return y_class, y_primary
