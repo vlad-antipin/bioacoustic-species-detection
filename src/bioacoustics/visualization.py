@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from .data import SR
 
 
 def plot_label_frequency(df_label, log=True, ax=None):
@@ -41,6 +42,61 @@ def plot_label_concurrence(df_label, normalize=True, ax=None):
     ax.set_title("Label co-occurrence matrix" + " (normalized)" if normalize else "")
 
 
+def plot_waveform(audio, ax=None, title=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 7))
+    t = np.arange(len(audio)) / SR
+    ax.plot(t, audio, linewidth=0.5)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    if title is None:
+        ax.set_title("Waveform")
+    else:
+        ax.set_title(title)
+
+def plot_cepstrum_pipeline(audio):
+
+    X = np.fft.fft(audio)
+    freqs = np.fft.fftfreq(len(audio), d=1/SR)
+
+    pos_idx = freqs >= 0
+    freqs = freqs[pos_idx]
+    X = X[pos_idx]
+
+    power_spectrum = np.abs(X) ** 2
+    
+    log_spectrum = np.log1p(power_spectrum)
+
+    log_mag = np.log1p(np.abs(X))
+    cepstrum = np.fft.ifft(log_mag).real
+
+    quefrency = np.arange(len(cepstrum)) / SR
+
+
+    plt.figure(figsize=(15, 10))
+
+    plt.subplot(3, 1, 1)
+    plt.plot(freqs, power_spectrum)
+    plt.title("Power Spectrum (|FFT|^2)")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power")
+
+    plt.subplot(3, 1, 2)
+    plt.plot(freqs, log_spectrum)
+    plt.title("Log Power Spectrum")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Log Power")
+
+    plt.subplot(3, 1, 3)
+    plt.plot(quefrency, cepstrum)
+    plt.title("Cepstrum (IFFT of log spectrum)")
+    plt.xlabel("Quefrency (s)")
+    plt.ylabel("Amplitude")
+
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_spectrogram(S_db, frequencies, times, ax=None, title=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 7))
@@ -64,5 +120,7 @@ def plot_spectrogram(S_db, frequencies, times, ax=None, title=None):
 
     fig.colorbar(img, ax=ax, format="%+2.0f dB", shrink=0.8)
 
-    if title is not None:
+    if title is None:
+        ax.set_title("Spectrogram")
+    else:
         ax.set_title(title)
