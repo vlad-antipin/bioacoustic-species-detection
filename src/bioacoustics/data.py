@@ -17,7 +17,7 @@ TEST_SOUNDSCAPES_AUDIO_DIR = Path("test_soundscapes")
 
 RESULTS_DIR = Path("../results")
 
-SR = 35000  # 32kHz
+SR = 32000  # 32kHz
 
 
 def load_metadata():

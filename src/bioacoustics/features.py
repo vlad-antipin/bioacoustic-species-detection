@@ -6,6 +6,7 @@ import librosa
 from .data import SR
 from .data import load_audio
 from .preprocessing import get_labels
+from tqdm.auto import tqdm
 
 
 def get_spectrogram(audio, ref=np.max, n_fft=2048):
@@ -17,6 +18,28 @@ def get_spectrogram(audio, ref=np.max, n_fft=2048):
     )
     S_db = librosa.amplitude_to_db(np.abs(S), ref=ref)
     return S_db, frequencies, times
+
+def get_mel_spectrogram(audio, ref=np.max, n_fft=2048, n_mels=128):
+    S = librosa.feature.melspectrogram(
+        y=audio, sr=SR, n_fft=n_fft, hop_length=512, n_mels=n_mels
+    )
+    frequencies = librosa.mel_frequencies(n_mels=n_mels, fmin=0, fmax=SR / 2)
+    times = librosa.frames_to_time(
+        np.arange(S.shape[1]), sr=SR, n_fft=n_fft, hop_length=512
+    )
+    S_db = librosa.power_to_db(S, ref=ref)
+    return S_db, frequencies, times
+
+
+def get_mfcc(audio, n_mfcc=20):
+    mfcc = librosa.feature.mfcc(y=audio, sr=SR, n_mfcc=n_mfcc)
+    return mfcc
+
+
+def get_chroma_stft(audio):
+    chroma = librosa.feature.chroma_stft(y=audio, sr=SR)
+    return chroma
+
 
 def add_basic_signal_stats(audio, features):
     features["mean"] = np.mean(audio)
@@ -153,7 +176,10 @@ def prepare_data(df, df_taxonomy, sample_idx):
     df = df.iloc[sample_idx]
     y_class, y_primary = get_labels(df, df_taxonomy)
 
-    features = [get_features(load_audio(sample)) for _, sample in df.iterrows()]
+    features = [
+        get_features(load_audio(sample))
+        for _, sample in tqdm(df.iterrows(), total=len(df), desc="Extracting features")
+    ]
     X = pd.DataFrame(features, index=sample_idx)
 
     mask = ~X.isna().any(axis=1)
