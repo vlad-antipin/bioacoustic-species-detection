@@ -50,13 +50,25 @@ def plot_waveform(audio, ax=None, title=None):
     else:
         fig = ax.figure
 
-    librosa.display.waveshow(audio, sr=SR, ax=ax)
+    librosa.display.waveshow(audio, sr=SR, alpha=0.5, ax=ax)
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.set_title(title if title is not None else "Waveform")
 
     return ax
+
+
+def plot_autocorrelation(audio, ax=None, title=None):
+    if ax is None:
+        _, ax = plt.subplots(figsize=(10, 7))
+
+    autocorr = np.correlate(audio, audio, mode="full")
+    autocorr = autocorr[len(autocorr) // 2 :]
+    ax.plot(np.arange(len(autocorr)) / SR, autocorr)
+    ax.set_title(title if title is not None else "Autocorrelation")
+    ax.set_ylabel("autocorrelation")
+    ax.set_xlabel("lag (s)")
 
 
 def plot_cepstrum_pipeline(audio):
@@ -177,3 +189,40 @@ def plot_chroma_stft(chroma, ax=None, title=None, hop_length=512, show=True):
         plt.show()
 
     return ax
+
+
+def plot_onsets(audio, sr=SR):
+
+    # Compute onset envelope
+    onset_env = librosa.onset.onset_strength(y=audio, sr=sr)
+
+    # Detect onset frames
+    onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
+
+    times = librosa.times_like(onset_env, sr=sr)
+    onset_times = librosa.frames_to_time(onset_frames, sr=sr)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    librosa.display.waveshow(audio, sr=sr, alpha=0.5, ax=ax)
+
+    for onset_time in onset_times:
+        ax.axvline(onset_time, linestyle="--", alpha=0.8)
+
+    ax.set_title("Waveform with Detected Onsets")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=(14, 4))
+
+    ax.plot(times, onset_env)
+
+    ax.vlines(onset_times, ymin=0, ymax=onset_env.max(), linestyles="--")
+
+    ax.set_title("Onset Strength Envelope")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Onset Strength")
+
+    plt.show()

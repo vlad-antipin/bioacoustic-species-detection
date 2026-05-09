@@ -5,7 +5,8 @@ import librosa
 
 import pickle
 
-DATA_DIR = Path("../data")
+ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = ROOT / "data"
 TRAIN_METADATA_FILE = Path("train.csv")
 TRAIN_SOUNDSCAPES_METADATA_FILE = Path("train_soundscapes_labels.csv")
 TAXONOMY_FILE = Path("taxonomy.csv")
@@ -15,7 +16,7 @@ TRAIN_SOUNDSCAPES_AUDIO_DIR = Path("train_soundscapes")
 
 TEST_SOUNDSCAPES_AUDIO_DIR = Path("test_soundscapes")
 
-RESULTS_DIR = Path("../results")
+RESULTS_DIR = ROOT / "results"
 
 SR = 32000  # 32kHz
 
