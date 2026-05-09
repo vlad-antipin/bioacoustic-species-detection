@@ -5,10 +5,36 @@ import librosa.display
 
 from .config import SR, HOP_LENGTH
 
+import matplotlib.pyplot as plt
+
+def set_style():
+    plt.rcParams.update({
+        "figure.figsize": (8, 5),
+        "figure.dpi": 100,
+
+        "axes.titlesize": 12,
+        "axes.labelsize": 10,
+
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+
+        "axes.grid": True,
+        "grid.alpha": 0.2,
+
+        "lines.linewidth": 1.8,
+
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+
+        "legend.fontsize": 9,
+
+        "font.family": "DejaVu Sans",
+    })
+
 
 def plot_label_frequency(df_label, log=True, ax=None):
     if ax is None:
-        _, ax = plt.subplots(figsize=(10, 4))
+        _, ax = plt.subplots()
 
     label_freq = df_label.mean()
     label_freq.plot(kind="bar", ax=ax)
@@ -21,7 +47,7 @@ def plot_label_frequency(df_label, log=True, ax=None):
 
 def plot_active_labels(df_label, ax=None):
     if ax is None:
-        _, ax = plt.subplots(figsize=(10, 7))
+        _, ax = plt.subplots()
 
     row_counts = df_label.sum(axis=1)
     ax.hist(row_counts, bins=range(int(row_counts.max()) + 2), align="left")
@@ -32,7 +58,7 @@ def plot_active_labels(df_label, ax=None):
 
 def plot_label_concurrence(df_label, normalize=True, ax=None):
     if ax is None:
-        _, ax = plt.subplots(figsize=(8, 6))
+        _, ax = plt.subplots()
 
     cooc = df_label.T.dot(df_label)
     if normalize:
@@ -46,7 +72,7 @@ def plot_label_concurrence(df_label, normalize=True, ax=None):
 
 def plot_waveform(audio, ax=None, title=None,sr=SR):
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 7))
+        fig, ax = plt.subplots()
     else:
         fig = ax.figure
 
@@ -61,7 +87,7 @@ def plot_waveform(audio, ax=None, title=None,sr=SR):
 
 def plot_autocorrelation(audio, ax=None, title=None, sr=SR):
     if ax is None:
-        _, ax = plt.subplots(figsize=(10, 7))
+        _, ax = plt.subplots()
 
     autocorr = np.correlate(audio, audio, mode="full")
     autocorr = autocorr[len(autocorr) // 2 :]
@@ -89,7 +115,7 @@ def plot_cepstrum_pipeline(audio, sr=SR):
 
     quefrency = np.arange(len(cepstrum)) / sr
 
-    plt.figure(figsize=(15, 10))
+    plt.figure()
 
     plt.subplot(3, 1, 1)
     plt.plot(freqs, power_spectrum)
@@ -115,7 +141,7 @@ def plot_cepstrum_pipeline(audio, sr=SR):
 
 def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_axis="linear"):
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 7))
+        fig, ax = plt.subplots()
     else:
         fig = ax.figure
 
@@ -139,7 +165,7 @@ def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_a
 
 def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 7))
+        fig, ax = plt.subplots()
     else:
         fig = ax.figure
 
@@ -164,7 +190,7 @@ def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
 
 def plot_chroma_stft(chroma, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, show=True):
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 7))
+        fig, ax = plt.subplots()
     else:
         fig = ax.figure
 
@@ -202,7 +228,7 @@ def plot_onsets(audio, sr=SR):
     times = librosa.times_like(onset_env, sr=sr)
     onset_times = librosa.frames_to_time(onset_frames, sr=sr)
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots()
 
     librosa.display.waveshow(audio, sr=sr, alpha=0.5, ax=ax)
 
@@ -215,7 +241,7 @@ def plot_onsets(audio, sr=SR):
 
     plt.show()
 
-    fig, ax = plt.subplots(figsize=(14, 4))
+    fig, ax = plt.subplots()
 
     ax.plot(times, onset_env)
 
