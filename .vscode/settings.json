@@ -4,6 +4,7 @@
         "cepstrum",
         "filterbanks",
         "framewise",
+        "multilabel",
         "quefrency",
         "rolloff"
     ]
