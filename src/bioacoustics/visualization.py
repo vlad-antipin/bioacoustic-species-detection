@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import librosa.display
 
-from .data import SR
+from .config import SR, HOP_LENGTH
 
 
 def plot_label_frequency(df_label, log=True, ax=None):
@@ -44,13 +44,13 @@ def plot_label_concurrence(df_label, normalize=True, ax=None):
     ax.set_title("Label co-occurrence matrix" + " (normalized)" if normalize else "")
 
 
-def plot_waveform(audio, ax=None, title=None):
+def plot_waveform(audio, ax=None, title=None,sr=SR):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 7))
     else:
         fig = ax.figure
 
-    librosa.display.waveshow(audio, sr=SR, alpha=0.5, ax=ax)
+    librosa.display.waveshow(audio, sr=sr, alpha=0.5, ax=ax)
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
@@ -59,22 +59,22 @@ def plot_waveform(audio, ax=None, title=None):
     return ax
 
 
-def plot_autocorrelation(audio, ax=None, title=None):
+def plot_autocorrelation(audio, ax=None, title=None, sr=SR):
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 7))
 
     autocorr = np.correlate(audio, audio, mode="full")
     autocorr = autocorr[len(autocorr) // 2 :]
-    ax.plot(np.arange(len(autocorr)) / SR, autocorr)
+    librosa.display.waveshow(autocorr, sr=sr, alpha=0.5, ax=ax)
     ax.set_title(title if title is not None else "Autocorrelation")
     ax.set_ylabel("autocorrelation")
     ax.set_xlabel("lag (s)")
 
 
-def plot_cepstrum_pipeline(audio):
+def plot_cepstrum_pipeline(audio, sr=SR):
 
     X = np.fft.fft(audio)
-    freqs = np.fft.fftfreq(len(audio), d=1 / SR)
+    freqs = np.fft.fftfreq(len(audio), d=1 / sr)
 
     pos_idx = freqs >= 0
     freqs = freqs[pos_idx]
@@ -87,7 +87,7 @@ def plot_cepstrum_pipeline(audio):
     log_mag = np.log1p(np.abs(X))
     cepstrum = np.fft.ifft(log_mag).real
 
-    quefrency = np.arange(len(cepstrum)) / SR
+    quefrency = np.arange(len(cepstrum)) / sr
 
     plt.figure(figsize=(15, 10))
 
@@ -113,7 +113,7 @@ def plot_cepstrum_pipeline(audio):
     plt.show()
 
 
-def plot_spectrogram(S_db, ax=None, title=None, hop_length=512, y_axis="linear"):
+def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_axis="linear"):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 7))
     else:
@@ -121,7 +121,7 @@ def plot_spectrogram(S_db, ax=None, title=None, hop_length=512, y_axis="linear")
 
     img = librosa.display.specshow(
         S_db,
-        sr=SR,
+        sr=sr,
         hop_length=hop_length,
         x_axis="time",
         y_axis=y_axis,
@@ -137,7 +137,7 @@ def plot_spectrogram(S_db, ax=None, title=None, hop_length=512, y_axis="linear")
     return ax
 
 
-def plot_mfcc(mfccs, ax=None, title=None, hop_length=512):
+def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 7))
     else:
@@ -145,7 +145,7 @@ def plot_mfcc(mfccs, ax=None, title=None, hop_length=512):
 
     img = librosa.display.specshow(
         mfccs,
-        sr=SR,
+        sr=sr,
         hop_length=hop_length,
         x_axis="time",
         y_axis="frames",
@@ -162,7 +162,7 @@ def plot_mfcc(mfccs, ax=None, title=None, hop_length=512):
     return ax
 
 
-def plot_chroma_stft(chroma, ax=None, title=None, hop_length=512, show=True):
+def plot_chroma_stft(chroma, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, show=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 7))
     else:
@@ -170,7 +170,7 @@ def plot_chroma_stft(chroma, ax=None, title=None, hop_length=512, show=True):
 
     img = librosa.display.specshow(
         chroma,
-        sr=SR,
+        sr=sr,
         hop_length=hop_length,
         x_axis="time",
         y_axis="chroma",
