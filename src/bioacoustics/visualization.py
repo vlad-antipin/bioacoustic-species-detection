@@ -19,8 +19,8 @@ def set_style():
         "axes.spines.top": False,
         "axes.spines.right": False,
 
-        "axes.grid": True,
-        "grid.alpha": 0.2,
+        # "axes.grid": True,
+        # "grid.alpha": 0.2,
 
         "lines.linewidth": 1.8,
 
