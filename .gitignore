@@ -1,4 +1,6 @@
 data/
+results/features/data_train_soundscapes.pkl
+results/features/data_train.pkl
 local/
 
 # Byte-compiled / optimized / DLL files
