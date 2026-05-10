@@ -10,9 +10,9 @@ from sklearn.metrics import (
 
 def evaluate_multilabel_model(model, X_test, y_test):
     """
-    Macro - metric computed per class then averaged, giving each label 
+    Macro - metric computed per class then averaged, giving each label
     equal weight regardless of frequency.
-    
+
     Micro - metric computed globally by aggregating all true positives,
     false positives, and false negatives across labels.
 
@@ -20,10 +20,10 @@ def evaluate_multilabel_model(model, X_test, y_test):
     across all samples and labels.
 
     LRAP (Label Ranking Average Precision) - evaluates how well true
-    labels are ranked above others for each sample; averages the rank 
+    labels are ranked above others for each sample; averages the rank
     quality over true labels and samples.
     """
-    
+
     # TODO: handle correctly missing labels
 
     y_pred = model.predict(X_test)
@@ -31,7 +31,7 @@ def evaluate_multilabel_model(model, X_test, y_test):
 
     if y_test.shape[1] <= 10:
         print("\n================= CLASSIFICATION REPORT =================")
-        print(classification_report(y_test, y_pred))
+        print(classification_report(y_test, y_pred, target_names=y_test.columns))
 
     print("\n================= THRESHOLD-BASED METRICS =================")
     print(f"Macro F1:   {f1_score(y_test, y_pred, average='macro'):.4f}")
@@ -53,4 +53,4 @@ def evaluate_multilabel_model(model, X_test, y_test):
         f"LRAP:          {label_ranking_average_precision_score(y_test, y_proba):.4f}"
     )
 
-    return {"y_pred": y_pred, "y_proba": y_proba}
+    return y_pred, y_proba

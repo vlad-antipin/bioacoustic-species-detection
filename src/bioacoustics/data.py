@@ -22,6 +22,9 @@ def load_metadata():
     df_train = pd.read_csv(DATA_DIR / TRAIN_METADATA_FILE)
     df_train_soundscapes = pd.read_csv(DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE)
     df_taxonomy = pd.read_csv(DATA_DIR / TAXONOMY_FILE)
+    
+    df_train.set_index(["filename"], inplace=True)
+    df_train_soundscapes.set_index(["filename", "start", "end"], inplace=True)
 
     return df_train, df_train_soundscapes, df_taxonomy
 
@@ -52,16 +55,22 @@ def load_soundscape(filename, start: str, end: str, train=True):
     return audio
 
 
-def is_soundscape(row: pd.Series | pd.DataFrame):
-    assert "filename" in row
-    return "start" in row and "end" in row
+def is_soundscape(data: pd.Series | pd.DataFrame): #type: ignore
+    if isinstance(data, pd.DataFrame):
+        row: pd.Series   = data.iloc[0]
+    elif isinstance(data, pd.Series) :
+        row = data
+    else:
+        raise TypeError("Not supported format")
+    return isinstance(row.name, tuple)
+        
 
 
 def load_audio(row: pd.Series, train=True):
     if is_soundscape(row):
-        return load_soundscape(row["filename"], row["start"], row["end"], train=train)
+        return load_soundscape(*row.name, train=train)  #type: ignore
     else:
-        return load_train_audio(row["filename"])
+        return load_train_audio(row.name)
 
 
 def save_results(result, out_dir, fname):

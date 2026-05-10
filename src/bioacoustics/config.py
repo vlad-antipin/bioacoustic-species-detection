@@ -46,15 +46,35 @@ ROLLOFF_PERCENT = 0.85
 # Spectral contrast
 N_CONTRAST_BANDS = 6
 
-# Statistics
-PERCENTILES = [10, 25, 50, 75, 90]
-PER_BAND_PERCENTILES = [10, 50, 90]
-
 # Onset detection
 ONSET_BACKTRACK = False
 
 # Numerical stability
 EPS = 1e-9
+
+# Audio chunking
+CHUNK_DURATION = 5  # seconds
+TOP_FRACTION_CHUNKS = 0.4  # keep best 40% of chunks
+
+# Percentiles
+
+# Tonal vs noisy character; distribution is meaningful across the full range
+PERCENTILES_ZCR = [25, 50, 75]
+
+# Amplitude envelope; 90th captures peak vocalization without max instability
+PERCENTILES_RMS = [25, 50, 75, 90]
+
+# Spectral shape; tails are diagnostic (sweeping songs vs monotone calls)
+PERCENTILES_SPECTRAL = [10, 25, 50, 75, 90]
+
+# Per-band energy; captures which frequency bands are episodically active
+PERCENTILES_BAND = [10, 50, 90]
+
+# Onset strength is zero-heavy; only upper distribution is informative
+PERCENTILES_ONSET = [50, 90]
+PERCENTILES_ONSET_IOI = [10, 50, 90]
+
+# ===== Keyword arguments for used functions =====
 
 FRAME_KWARGS: Dict[str, Any] = dict(
     n_fft=N_FFT,

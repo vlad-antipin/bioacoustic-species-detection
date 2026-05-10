@@ -6,6 +6,7 @@ import librosa.display
 from .config import SR, HOP_LENGTH
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 def set_style():
     plt.rcParams.update({
@@ -33,8 +34,7 @@ def set_style():
 
 
 def plot_label_frequency(df_label, log=True, ax=None):
-    if ax is None:
-        _, ax = plt.subplots()
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     label_freq = df_label.mean()
     label_freq.plot(kind="bar", ax=ax)
@@ -46,8 +46,7 @@ def plot_label_frequency(df_label, log=True, ax=None):
 
 
 def plot_active_labels(df_label, ax=None):
-    if ax is None:
-        _, ax = plt.subplots()
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     row_counts = df_label.sum(axis=1)
     ax.hist(row_counts, bins=range(int(row_counts.max()) + 2), align="left")
@@ -57,8 +56,7 @@ def plot_active_labels(df_label, ax=None):
 
 
 def plot_label_concurrence(df_label, normalize=True, ax=None):
-    if ax is None:
-        _, ax = plt.subplots()
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     cooc = df_label.T.dot(df_label)
     if normalize:
@@ -71,10 +69,7 @@ def plot_label_concurrence(df_label, normalize=True, ax=None):
 
 
 def plot_waveform(audio, ax=None, title=None,sr=SR):
-    if ax is None:
-        fig, ax = plt.subplots()
-    else:
-        fig = ax.figure
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     librosa.display.waveshow(audio, sr=sr, alpha=0.5, ax=ax)
 
@@ -86,8 +81,7 @@ def plot_waveform(audio, ax=None, title=None,sr=SR):
 
 
 def plot_autocorrelation(audio, ax=None, title=None, sr=SR):
-    if ax is None:
-        _, ax = plt.subplots()
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     autocorr = np.correlate(audio, audio, mode="full")
     autocorr = autocorr[len(autocorr) // 2 :]
@@ -140,10 +134,7 @@ def plot_cepstrum_pipeline(audio, sr=SR):
 
 
 def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_axis="linear"):
-    if ax is None:
-        fig, ax = plt.subplots()
-    else:
-        fig = ax.figure
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     img = librosa.display.specshow(
         S_db,
@@ -163,11 +154,10 @@ def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_a
     return ax
 
 
+
 def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
-    if ax is None:
-        fig, ax = plt.subplots()
-    else:
-        fig = ax.figure
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
+
 
     img = librosa.display.specshow(
         mfccs,
@@ -175,24 +165,27 @@ def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
         hop_length=hop_length,
         x_axis="time",
         y_axis="frames",
-        cmap="viridis",
+        cmap="RdBu_r",       
+        vmin=np.percentile(mfccs[1:], 2),
+        vmax=np.percentile(mfccs[1:], 98),
         ax=ax,
     )
 
-    ax.set_ylabel("MFCC Coefficients")
+    ax.set_ylabel("MFCC Coefficient Index")
+    ax.set_xlabel("Time (s)")
     ax.set_title(title if title is not None else "MFCC")
 
-    cbar = fig.colorbar(img, ax=ax, shrink=0.8)
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    cbar = fig.colorbar(img, ax=ax)
     cbar.set_label("Coefficient value")
 
+    fig.tight_layout()
     return ax
 
 
 def plot_chroma_stft(chroma, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, show=True):
-    if ax is None:
-        fig, ax = plt.subplots()
-    else:
-        fig = ax.figure
+    fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     img = librosa.display.specshow(
         chroma,

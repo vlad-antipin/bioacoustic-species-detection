@@ -4,13 +4,14 @@ from scipy.stats import gmean
 import pandas as pd
 import librosa
 
+from .quality import chunk_quality_score
+
 from .config import (
     SR,
     STFT_KWARGS,
     MEL_KWARGS,
     MFCC_KWARGS,
     CHROMA_STFT_KWARGS,
-    PERCENTILES,
     SPECTRAL_CENTROID_KWARGS,
     SPECTRAL_BANDWIDTH_KWARGS,
     SPECTRAL_ROLLOFF_KWARGS,
@@ -23,12 +24,16 @@ from .config import (
     FRAME_RATE,
     EPS,
     ROLLOFF_PERCENT,
-    PER_BAND_PERCENTILES,
     N_SELECTED_BANDS,
+    CHUNK_DURATION,
+    TOP_FRACTION_CHUNKS,
+    PERCENTILES_ZCR,
+    PERCENTILES_RMS,
+    PERCENTILES_SPECTRAL,
+    PERCENTILES_BAND,
+    PERCENTILES_ONSET,
+    PERCENTILES_ONSET_IOI,
 )
-from .data import load_audio
-from .preprocessing import get_labels
-from tqdm.auto import tqdm
 
 
 def get_spectrogram(
@@ -77,8 +82,12 @@ def get_chroma_stft(audio, kwargs=CHROMA_STFT_KWARGS):
     return chroma
 
 
-def add_percentiles(name, values, features, q=PERCENTILES):
-    p = np.percentile(values, q)
+def add_percentiles(name, values, features, q=[10, 50, 60]):
+    p = (
+        np.nanpercentile(values, q)
+        if not np.all(np.isnan(values))
+        else np.array([np.nan] * len(q))
+    )
     for i, perc in zip(q, p):
         features[f"{name}_p{i}"] = perc
 
@@ -92,17 +101,19 @@ def add_basic_signal_stats(audio, features):
 
 
 def add_zero_crossing_rate(
-    audio, features, include_percentiles=True, kwargs=ZCR_KWARGS
+    audio, features, include_percentiles=True, kwargs=ZCR_KWARGS, q=PERCENTILES_ZCR
 ):
     zcr = librosa.feature.zero_crossing_rate(audio, **kwargs)[0]
     features["zcr_mean"] = zcr.mean()
     features["zcr_std"] = zcr.std()
 
     if include_percentiles:
-        add_percentiles("zcr", zcr, features)
+        add_percentiles("zcr", zcr, features, q=q)
 
 
-def add_rms_energy_stats(audio, features, include_percentiles=True, kwargs=RMS_KWARGS):
+def add_rms_energy_stats(
+    audio, features, include_percentiles=True, kwargs=RMS_KWARGS, q=PERCENTILES_RMS
+):
     rms_frame = librosa.feature.rms(y=audio, **kwargs)[0]
 
     features["rms_frame_mean"] = rms_frame.mean()
@@ -112,7 +123,7 @@ def add_rms_energy_stats(audio, features, include_percentiles=True, kwargs=RMS_K
     features["rms_frame_min"] = rms_frame.min()
 
     if include_percentiles:
-        add_percentiles("centroid", rms_frame, features)
+        add_percentiles("centroid", rms_frame, features, q=q)
 
 
 def add_spectrogram(audio, features, kwargs=STFT_KWARGS):
@@ -134,6 +145,8 @@ def add_spectral_features(
     spectral_rolloff_kwargs=SPECTRAL_ROLLOFF_KWARGS,
     spectral_contrast_kwargs=SPECTRAL_CONTRAST_KWARGS,
     spectral_flatness_kwargs=SPECTRAL_FLATNESS_KWARGS,
+    q=PERCENTILES_SPECTRAL,
+    q_band=PERCENTILES_BAND,
 ):
 
     spectral_centroid = librosa.feature.spectral_centroid(
@@ -169,13 +182,13 @@ def add_spectral_features(
         features[f"contrast_band{i}_std"] = band.std()
 
     if include_percentiles:
-        add_percentiles("centroid", spectral_centroid, features)
-        add_percentiles("bandwidth", spectral_bandwidth, features)
-        add_percentiles("rolloff", spectral_rolloff, features)
-        add_percentiles("flatness", spectral_flatness, features)
+        add_percentiles("centroid", spectral_centroid, features, q=q)
+        add_percentiles("bandwidth", spectral_bandwidth, features, q=q)
+        add_percentiles("rolloff", spectral_rolloff, features, q=q)
+        add_percentiles("flatness", spectral_flatness, features, q=q)
 
         for i, band in enumerate(spectral_contrast):
-            add_percentiles("contrast_band{i}", spectral_contrast, features)
+            add_percentiles("contrast_band{i}", spectral_contrast, features, q=q_band)
 
 
 def add_modulation(
@@ -221,7 +234,7 @@ def add_log_mel(
     features,
     include_modulation=True,
     include_percentiles=True,
-    q=PER_BAND_PERCENTILES,
+    q=PERCENTILES_BAND,
     n_selected_bands=N_SELECTED_BANDS,
     kwargs=MEL_KWARGS,
 ):
@@ -285,7 +298,14 @@ def add_autocorrelation(audio, features):
     # features["autocorr_max"] = autocorr.max()
 
 
-def add_onset_features(audio, features, include_percentiles=True, kwargs=ONSET_KWARGS):
+def add_onset_features(
+    audio,
+    features,
+    include_percentiles=True,
+    kwargs=ONSET_KWARGS,
+    q=PERCENTILES_ONSET,
+    q_ioi=PERCENTILES_ONSET_IOI,
+):
 
     onset_env = librosa.onset.onset_strength(
         y=audio, **{k: v for k, v in kwargs.items() if k != "backtrack"}
@@ -295,7 +315,7 @@ def add_onset_features(audio, features, include_percentiles=True, kwargs=ONSET_K
     features["onset_std"] = onset_env.std()
 
     if include_percentiles:
-        add_percentiles("onset", onset_env, features)
+        add_percentiles("onset", onset_env, features, q=q)
 
     onsets = librosa.onset.onset_detect(
         y=audio, **{k: v for k, v in kwargs.items() if k != "n_fft"}
@@ -312,16 +332,25 @@ def add_onset_features(audio, features, include_percentiles=True, kwargs=ONSET_K
         )
         intervals = np.diff(times)
 
-        features["onset_interval_mean"] = intervals.mean()
-        features["onset_interval_std"] = intervals.std()
+    else:
+        intervals = np.array([np.nan])
 
-        if include_percentiles:
-            add_percentiles("onset_interval", intervals, features)
+    features["onset_interval_mean"] = (
+        np.nanmean(
+            intervals,
+        )
+        if not np.all(np.isnan(intervals))
+        else np.nan
+    )
+    features["onset_interval_std"] = (
+        np.nanstd(intervals) if not np.all(np.isnan(intervals)) else np.nan
+    )
 
-    # else there will be missing value
+    if include_percentiles:
+        add_percentiles("onset_interval", intervals, features, q=q_ioi)
 
 
-def get_features(audio: NDArray, sr=SR) -> pd.Series:
+def get_chunk_features(audio: NDArray, sr=SR) -> pd.Series:
     """Extract a rich set of audio features from a waveform."""
 
     if len(audio) < sr * 0.5:  # shorter than 0.5 sec
@@ -354,25 +383,41 @@ def get_features(audio: NDArray, sr=SR) -> pd.Series:
     return pd.Series(features)
 
 
-def prepare_data(df, df_taxonomy, sample_idx):
+def get_features(
+    audio,
+    sr=SR,
+    get_chunk_features=get_chunk_features,
+    chunk_duration=CHUNK_DURATION,
+    top_fraction=TOP_FRACTION_CHUNKS,
+) -> pd.Series:
+    """
+    Split recording into chunks, score each, keep top-k,
+    extract features, return median across selected chunks.
 
-    df = df.iloc[sample_idx]
-    y_class, y_primary = get_labels(df, df_taxonomy)
+    Returns empty series if no valid chunks are found.
+    """
+    # TODO: try chunks with overlaps?
+    chunk_len = chunk_duration * sr
+    n_chunks = len(audio) // chunk_len
 
-    features = [
-        get_features(load_audio(sample))
-        for _, sample in tqdm(df.iterrows(), total=len(df), desc="Extracting features")
-    ]
-    X = pd.DataFrame(features, index=sample_idx)
+    if n_chunks == 0:
+        return pd.Series({})
 
-    mask = ~X.isna().any(axis=1)
+    scores = []
+    for i in range(n_chunks):
+        chunk = audio[i * chunk_len : (i + 1) * chunk_len]
+        score = chunk_quality_score(chunk, sr)
+        scores.append((score, i))
 
-    X = X[mask]
-    y_primary = y_primary[mask]
-    y_class = y_class[mask]
+    scores.sort(key=lambda x: x[0], reverse=True)
+    k = max(1, round(len(scores) * top_fraction))
+    selected_indices = [idx for _, idx in scores[:k]]
 
-    return {
-        "X": X,
-        "y_primary": y_primary,
-        "y_class": y_class,
-    }
+    feature_rows = []
+    for idx in selected_indices:
+        chunk = audio[idx * chunk_len : (idx + 1) * chunk_len]
+        features = get_chunk_features(chunk, sr)
+        feature_rows.append(features)
+
+    feature_matrix = pd.DataFrame(feature_rows)
+    return feature_matrix.median(axis=0)
