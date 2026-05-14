@@ -8,7 +8,7 @@ from sklearn.metrics import (
 )
 
 
-def evaluate_multilabel_model(model, X_test, y_test):
+def evaluate_multilabel_model(model, X_test, y_test, y_parent_proba=None):
     """
     Macro - metric computed per class then averaged, giving each label
     equal weight regardless of frequency.
@@ -25,20 +25,23 @@ def evaluate_multilabel_model(model, X_test, y_test):
     """
 
     # TODO: handle correctly missing labels
-
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)
+    if y_parent_proba is None:
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)
+    else:
+        y_pred = model.predict(X_test, y_parent_proba)
+        y_proba = model.predict_proba(X_test, y_parent_proba)
 
     if y_test.shape[1] <= 10:
-        print("\n================= CLASSIFICATION REPORT =================")
+        print("\n" + " CLASSIFICATION REPORT ".center(60, "="))
         print(classification_report(y_test, y_pred, target_names=y_test.columns))
 
-    print("\n================= THRESHOLD-BASED METRICS =================")
+    print("\n" + " THRESHOLD-BASED METRICS ".center(60, "="))
     print(f"Macro F1:   {f1_score(y_test, y_pred, average='macro'):.4f}")
     print(f"Micro F1:   {f1_score(y_test, y_pred, average='micro'):.4f}")
     print(f"Hamming loss: {hamming_loss(y_test, y_pred):.4f}")
 
-    print("\n================= RANKING & PROBABILITY METRICS =================")
+    print("\n" + " RANKING & PROBABILITY METRICS ".center(60, "="))
     print(f"Macro ROC AUC: {roc_auc_score(y_test, y_proba, average='macro'):.4f}")
     print(f"Micro ROC AUC: {roc_auc_score(y_test, y_proba, average='micro'):.4f}")
 
@@ -52,5 +55,3 @@ def evaluate_multilabel_model(model, X_test, y_test):
     print(
         f"LRAP:          {label_ranking_average_precision_score(y_test, y_proba):.4f}"
     )
-
-    return y_pred, y_proba
