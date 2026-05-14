@@ -78,6 +78,9 @@ def save_results(result, out_dir, fname):
         pickle.dump(result, file)
 
 
-def load_results(out_dir, fname):
-    with open(RESULTS_DIR / out_dir / f"{fname}.pkl", "rb") as file:
+def load_results(out_dir, fname, frozen=True):
+    out_dir = RESULTS_DIR / out_dir
+    if frozen:
+        out_dir /= "frozen"
+    with open(out_dir / f"{fname}.pkl", "rb") as file:
         return pickle.load(file)
