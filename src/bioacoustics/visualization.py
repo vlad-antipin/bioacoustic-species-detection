@@ -308,14 +308,8 @@ def plot_class_distribution(data_train, data_train_soundscapes):
 
 
 def plot_species_distribution(
-    data_train, data_train_soundscapes, primary_to_class, class_colors=CLASS_COLORS
+    counts_train, counts_sound, primary_to_class, class_colors=CLASS_COLORS
 ):
-
-    #
-    # Counts
-    #
-    counts_train = data_train["y_primary"].sum()
-    counts_sound = data_train_soundscapes["y_primary"].sum()
 
     #
     # Build dataframe using SOUND frequencies

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 from numpy.typing import NDArray
 from scipy.stats import gmean
@@ -418,3 +420,58 @@ def get_features(
     ]
 
     return pd.DataFrame(feature_rows).median(axis=0)
+
+
+def augment_temporal_features(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Augments DataFrame with cyclical time and day-of-year features
+    derived from filenames in the index.
+
+    Expects a MultiIndex where the first level contains filenames with
+    stems formatted as '..._YYYYMMDD_HHMMSS'.
+
+    Adds columns: time_sin, time_cos, doy_sin, doy_cos
+    """
+    filenames = data.index.get_level_values(0)
+
+    datetimes = pd.to_datetime(
+        ["_".join(Path(f).stem.rsplit("_", 2)[-2:]) for f in filenames],
+        format="%Y%m%d_%H%M%S",
+    )
+
+    seconds_in_day = datetimes.hour * 3600 + datetimes.minute * 60 + datetimes.second
+    day_fraction = seconds_in_day / (24 * 3600)
+
+    day_of_year = datetimes.day_of_year
+    year_fraction = day_of_year / 365.25
+
+    result = data.copy()
+    result["time_sin"] = np.sin(2 * np.pi * day_fraction)
+    result["time_cos"] = np.cos(2 * np.pi * day_fraction)
+    result["doy_sin"]  = np.sin(2 * np.pi * year_fraction)
+    result["doy_cos"]  = np.cos(2 * np.pi * year_fraction)
+
+    return result
+
+
+# def augment_sites(data: pd.DataFrame) -> pd.DataFrame:
+#     filenames = data.index.get_level_values(0)
+#     result = data.copy()
+#     result["site"] = pd.Categorical([Path(f).stem.split("_")[3] for f in filenames])
+
+#     return result
+
+KNOWN_SITES = {'S03', 'S08', 'S09', 'S13', 'S15', 'S18', 'S19', 'S22', 'S23'}
+
+def augment_sites(data: pd.DataFrame) -> pd.DataFrame:
+
+    filenames = data.index.get_level_values(0)
+    result = data.copy()
+    sites = [Path(f).stem.split("_")[3] for f in filenames]
+    sites = [s if s in KNOWN_SITES else "site_unknown" for s in sites]
+    site_dummies = pd.get_dummies(sites, prefix="site")
+
+    site_dummies.index = result.index
+    result = pd.concat([result, site_dummies], axis=1)
+
+    return result

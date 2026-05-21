@@ -14,6 +14,8 @@ from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.multiclass import OneVsRestClassifier
 
+from scipy.ndimage import gaussian_filter1d
+
 from tqdm_joblib import tqdm_joblib
 
 
@@ -37,31 +39,89 @@ def ignore_warnings():
     warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.metrics")
 
 
-def split_soundscapes(data_soundscapes, test_size=0.2, random_state=42):
-    """Split soundscapes so that train and validation sets don't contain samples from the same file"""
+def split_soundscapes(
+    data_soundscapes, test_size=0.2, random_state=42, rare_first=True
+):
+    """Split soundscapes so train/test don't share files.
+
+    Can use a greedy rare-species-first strategy: files containing the rarest
+    species are assigned to the test set first so that as many species as
+    possible have at least one positive test example, avoiding NaN in macro
+    metrics.  Remaining test slots are filled at random.
+    """
     X = data_soundscapes["X"]
     y_class = data_soundscapes["y_class"]
     y_primary = data_soundscapes["y_primary"]
-    # First level of MultiIndex is file identifier
-    file_ids = X.index.get_level_values(0).unique()
 
-    train_files, test_files = train_test_split(
-        file_ids, test_size=test_size, random_state=random_state
+    if not rare_first:
+        # First level of MultiIndex is file identifier
+        file_ids = X.index.get_level_values(0).unique()
+
+        train_files, test_files = train_test_split(
+            file_ids, test_size=test_size, random_state=random_state
+        )
+
+        train_mask = X.index.get_level_values(0).isin(train_files)
+        test_mask = X.index.get_level_values(0).isin(test_files)
+    else:
+        file_col = X.index.get_level_values(0)
+        file_ids = file_col.unique()
+        n_test = max(1, round(len(file_ids) * test_size))
+
+        # Per-file species presence: (n_files, n_species) boolean DataFrame
+        file_species = y_primary.groupby(level=0).any()
+
+        # How many files each species appears in
+        species_file_count = file_species.sum(axis=0)
+
+        # Rarity score per file = minimum file-count across its species
+        # (lower score = file contains rarer species → prioritise for test)
+        def _rarity(fid):
+            present = file_species.loc[fid]
+            counts = species_file_count[present]
+            return counts.min() if len(counts) > 0 else np.inf
+
+        sorted_files = sorted(file_ids, key=_rarity)
+
+        covered = set()
+        test_files = []
+        pool = []
+
+        for fid in sorted_files:
+            species_here = set(file_species.columns[file_species.loc[fid]])
+            if len(test_files) < n_test and species_here - covered:
+                test_files.append(fid)
+                covered |= species_here
+            else:
+                pool.append(fid)
+
+        # Fill remaining test slots at random
+        rng = np.random.default_rng(random_state)
+        rng.shuffle(pool)
+        test_files.extend(pool[: n_test - len(test_files)])
+
+        test_set = set(test_files)
+        train_mask = ~file_col.isin(test_set)
+        test_mask = file_col.isin(test_set)
+
+    return (
+        X.loc[train_mask],
+        X.loc[test_mask],
+        y_class.loc[train_mask],
+        y_class.loc[test_mask],
+        y_primary.loc[train_mask],
+        y_primary.loc[test_mask],
     )
 
-    train_mask = X.index.get_level_values(0).isin(train_files)
-    test_mask = X.index.get_level_values(0).isin(test_files)
-    X_train = X.loc[train_mask]
-    X_test = X.loc[test_mask]
-    y_class_train = y_class.loc[train_mask]
-    y_class_test = y_class.loc[test_mask]
-    y_primary_train = y_primary.loc[train_mask]
-    y_primary_test = y_primary.loc[test_mask]
 
-    return X_train, X_test, y_class_train, y_class_test, y_primary_train, y_primary_test
-
-
-def split_data(data_train, data_soundscapes, fit_mode, test_size=0.2, random_state=42):
+def split_data(
+    data_train,
+    data_soundscapes,
+    fit_mode,
+    test_size=0.2,
+    random_state=42,
+    rare_first=True,
+):
 
     if fit_mode == FitMode.TRAIN_TO_TRAIN:
         X = data_train["X"]
@@ -86,7 +146,10 @@ def split_data(data_train, data_soundscapes, fit_mode, test_size=0.2, random_sta
             y_primary_train,
             y_primary_test,
         ) = split_soundscapes(
-            data_soundscapes, test_size=test_size, random_state=random_state
+            data_soundscapes,
+            test_size=test_size,
+            random_state=random_state,
+            rare_first=rare_first,
         )
     elif fit_mode == FitMode.TRAIN_TO_SOUNDSCAPE:
         X_train = data_train["X"]
@@ -108,7 +171,10 @@ def split_data(data_train, data_soundscapes, fit_mode, test_size=0.2, random_sta
             y_primary_soundscape_train,
             y_primary_test,
         ) = split_soundscapes(
-            data_soundscapes, test_size=test_size, random_state=random_state
+            data_soundscapes,
+            test_size=test_size,
+            random_state=random_state,
+            rare_first=rare_first,
         )
 
         # Mix the soundscape train portion with the regular train data, shuffle
@@ -172,7 +238,11 @@ class BalancedXGBClassifier(XGBClassifier):
 def get_prediction_pipeline(classifier: Classifier):
     if classifier == Classifier.LR:
         clf = LogisticRegression(
-            solver="liblinear", max_iter=1000, class_weight="balanced", l1_ratio=0.5
+            solver="saga",
+            penalty="elasticnet",
+            max_iter=1000,
+            class_weight="balanced",
+            l1_ratio=0.5,
         )
     elif classifier == Classifier.RF:
         clf = RandomForestClassifier(
@@ -234,7 +304,8 @@ class HierarchicalMixtureOfExperts:
         if isinstance(y_parent_proba, pd.DataFrame):
             y_parent_proba = y_parent_proba.values
         # mixture formula assumes that parent probabilities sum to 1 per sample
-        y_parent_proba /= y_parent_proba.sum(axis=1, keepdims=True)
+        y_parent_proba = y_parent_proba / y_parent_proba.sum(axis=1, keepdims=True)
+
         y_child_per_expert = np.zeros((self.n_experts, len(X), self.n_children))
         for i, expert_pipeline in enumerate(self.expert_pipelines):
             y_child_expert = expert_pipeline.predict_proba(X)
@@ -248,6 +319,7 @@ class HierarchicalMixtureOfExperts:
         return y_child_mixture
 
     def predict(self, X, y_parent_proba, threshold=0.5):
+        # TODO: tune threshold
         y_proba = self.predict_proba(X, y_parent_proba)
         return (y_proba >= threshold).astype(int)
 
@@ -273,3 +345,17 @@ def get_feature_importance(
     if class_names is not None and len(df) == len(class_names):
         df.index = class_names
     return df
+
+
+def smooth_group(group, sigma=2):
+    return group.apply(lambda col: gaussian_filter1d(col.values, sigma=sigma))
+
+
+def smooth_proba(y, sigma=2):
+    ''' Temporal Gaussian smoothing on probabilities'''
+    y_smooth = (
+        y.sort_index()
+        .groupby(level=0, group_keys=True)
+        .apply(lambda g: smooth_group(g, sigma=sigma))
+    )
+    return y_smooth

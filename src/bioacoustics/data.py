@@ -19,8 +19,8 @@ from .config import (
 
 
 def load_metadata():
-    df_train = pd.read_csv(DATA_DIR / TRAIN_METADATA_FILE)
-    df_train_soundscapes = pd.read_csv(DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE)
+    df_train = pd.read_csv(DATA_DIR / TRAIN_METADATA_FILE).drop_duplicates()
+    df_train_soundscapes = pd.read_csv(DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE).drop_duplicates()
     df_taxonomy = pd.read_csv(DATA_DIR / TAXONOMY_FILE)
 
     df_train.set_index(["filename"], inplace=True)
