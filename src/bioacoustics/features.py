@@ -469,7 +469,7 @@ def augment_sites(data: pd.DataFrame) -> pd.DataFrame:
     result = data.copy()
     sites = [Path(f).stem.split("_")[3] for f in filenames]
     sites = [s if s in KNOWN_SITES else "site_unknown" for s in sites]
-    site_dummies = pd.get_dummies(sites, prefix="site")
+    site_dummies = pd.get_dummies(sites, prefix="site", dtype=float)
 
     site_dummies.index = result.index
     result = pd.concat([result, site_dummies], axis=1)

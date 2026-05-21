@@ -360,11 +360,12 @@ def plot_species_distribution(
     colors = [class_colors[c] for c in classes]
 
     # Plotting
-    fig, axes = plt.subplots(2, 1, figsize=(32, 8))
+    fig, axes = plt.subplots(2, 1, figsize=(6, 4))
 
     counts_train.plot.bar(
         ax=axes[0],
         color=colors,
+        width=0.6
     )
 
     axes[0].set_xlabel("Species")
@@ -380,6 +381,8 @@ def plot_species_distribution(
     axes[1].set_ylabel("Count")
     axes[1].set_title("Class Distribution of Train Soundscapes")
 
+    axes[0].set_xticks([])
+    axes[1].set_xticks([])
     # Legend
     legend_elements = [
         Patch(facecolor=color, label=cls) for cls, color in class_colors.items()
@@ -388,6 +391,7 @@ def plot_species_distribution(
     fig.legend(handles=legend_elements)
 
     fig.tight_layout()
+    
     plt.show()
 
 
@@ -509,6 +513,387 @@ def plot_dim_reduction(
     plt.title("Feature Space Dimension Reduction")
     plt.legend()
     plt.show()
+
+
+def _multilabel_inputs(y_true, y_proba):
+    """Normalize y_true / y_proba to arrays and compute per-label AUC/AP.
+
+    Returns (labels, y_true_arr, y_proba_arr, supported, aucs, aps).
+    `supported` lists label indices that have both positive and negative examples.
+    """
+    from sklearn.metrics import roc_auc_score, average_precision_score
+
+    if hasattr(y_true, "columns"):
+        labels = list(y_true.columns)
+        y_true_arr = y_true.to_numpy().astype(int)
+    else:
+        labels = [str(i) for i in range(y_true.shape[1])]
+        y_true_arr = np.asarray(y_true, dtype=int)
+
+    y_proba_arr = np.asarray(y_proba)
+    n = len(labels)
+
+    supported = [j for j in range(n) if 0 < y_true_arr[:, j].sum() < len(y_true_arr)]
+    aucs = {j: roc_auc_score(y_true_arr[:, j], y_proba_arr[:, j]) for j in supported}
+    aps  = {j: average_precision_score(y_true_arr[:, j], y_proba_arr[:, j]) for j in supported}
+
+    return labels, y_true_arr, y_proba_arr, supported, aucs, aps
+
+
+def _small_multiples_grid(n, max_cols=3):
+    """Return (nrows, ncols) for a small-multiples layout."""
+    ncols = min(n, max_cols)
+    nrows = (n + ncols - 1) // ncols
+    return nrows, ncols
+
+
+def plot_multilabel_roc_pr(y_true, y_proba):
+    """ROC and Precision-Recall curves overlaid for every label."""
+    from sklearn.metrics import roc_curve, precision_recall_curve
+
+    labels, y_true_arr, y_proba_arr, supported, aucs, aps = _multilabel_inputs(y_true, y_proba)
+    n = len(labels)
+    cmap = plt.cm.get_cmap("tab10", n)
+
+    fig, (ax_roc, ax_pr) = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle("Per-label Curves", fontsize=13, fontweight="bold")
+
+    for j in supported:
+        fpr, tpr, _ = roc_curve(y_true_arr[:, j], y_proba_arr[:, j])
+        ax_roc.plot(fpr, tpr, color=cmap(j), lw=1.8,
+                    label=f"{labels[j]}  AUC={aucs[j]:.2f}")
+        prec, rec, _ = precision_recall_curve(y_true_arr[:, j], y_proba_arr[:, j])
+        ax_pr.plot(rec, prec, color=cmap(j), lw=1.8,
+                   label=f"{labels[j]}  AP={aps[j]:.2f}")
+
+    ax_roc.plot([0, 1], [0, 1], "k--", lw=0.8, alpha=0.4)
+    ax_roc.set(xlabel="False Positive Rate", ylabel="True Positive Rate", title="ROC Curves")
+    ax_roc.legend(fontsize=8)
+
+    for j in supported:
+        ax_pr.axhline(y_true_arr[:, j].mean(), color=cmap(j), lw=0.7, ls=":", alpha=0.5)
+    ax_pr.set(xlabel="Recall", ylabel="Precision", title="Precision-Recall Curves")
+    ax_pr.legend(fontsize=8)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_score_distributions(y_true, y_proba, threshold=0.5, max_labels=12):
+    """Per-label histograms of predicted scores split by true label."""
+    labels, y_true_arr, y_proba_arr, *_ = _multilabel_inputs(y_true, y_proba)
+    show_n = min(len(labels), max_labels)
+    nrows, ncols = _small_multiples_grid(show_n)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.2 * nrows), squeeze=False)
+    fig.suptitle("Score Distributions (positive vs. negative)", fontsize=13, fontweight="bold")
+
+    bins = np.linspace(0, 1, 30)
+    for idx in range(show_n):
+        ax = axes[idx // ncols][idx % ncols]
+        neg = y_proba_arr[y_true_arr[:, idx] == 0, idx]
+        pos = y_proba_arr[y_true_arr[:, idx] == 1, idx]
+        ax.hist(neg, bins=bins, density=True, alpha=0.65, color="tab:blue",
+                label=f"y=0  (n={len(neg)})")
+        ax.hist(pos, bins=bins, density=True, alpha=0.65, color="tab:orange",
+                label=f"y=1  (n={len(pos)})")
+        ax.axvline(threshold, color="crimson", lw=1.4, ls="--")
+        ax.set_title(labels[idx], fontsize=10)
+        ax.set_xlabel("Predicted score")
+        ax.set_ylabel("Density")
+        if idx == 0:
+            ax.legend(fontsize=8)
+
+    for idx in range(show_n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_confusion_breakdown(y_true, y_proba, threshold=0.5):
+    """Stacked TP/FP/FN/TN bar chart per label with precision & recall annotations."""
+    labels, y_true_arr, y_proba_arr, *_ = _multilabel_inputs(y_true, y_proba)
+    n = len(labels)
+    y_pred_arr = (y_proba_arr >= threshold).astype(int)
+
+    tp = (y_pred_arr & y_true_arr).sum(axis=0)
+    fp = (y_pred_arr & (1 - y_true_arr)).sum(axis=0)
+    fn = ((1 - y_pred_arr) & y_true_arr).sum(axis=0)
+    tn = ((1 - y_pred_arr) & (1 - y_true_arr)).sum(axis=0)
+
+    x, w = np.arange(n), 0.55
+    fig, ax = plt.subplots(figsize=(max(8, n * 1.3), 4.5))
+    ax.bar(x, tp, w, label="TP", color="tab:green")
+    ax.bar(x, fp, w, bottom=tp,           label="FP", color="tab:red")
+    ax.bar(x, fn, w, bottom=tp + fp,      label="FN", color="tab:orange")
+    ax.bar(x, tn, w, bottom=tp + fp + fn, label="TN", color="tab:blue", alpha=0.35)
+
+    for xi, (t, f, fn_) in enumerate(zip(tp, fp, fn)):
+        prec_ = t / (t + f)   if (t + f)   > 0 else float("nan")
+        rec_  = t / (t + fn_) if (t + fn_) > 0 else float("nan")
+        ax.text(xi, tp[xi] + fp[xi] + fn[xi] + tn[xi] + 1,
+                f"P={prec_:.2f}\nR={rec_:.2f}",
+                ha="center", va="bottom", fontsize=7.5)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_title(f"Prediction Breakdown per Label  (threshold={threshold})",
+                 fontsize=12, fontweight="bold")
+    ax.set_ylabel("Count")
+    ax.legend(loc="upper right")
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_calibration(y_true, y_proba, max_labels=12):
+    """Reliability diagrams (calibration curves) per label."""
+    from sklearn.calibration import calibration_curve
+
+    labels, y_true_arr, y_proba_arr, supported, *_ = _multilabel_inputs(y_true, y_proba)
+    show_n = min(len(labels), max_labels)
+    nrows, ncols = _small_multiples_grid(show_n)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.2 * nrows), squeeze=False)
+    fig.suptitle("Calibration (Reliability Diagrams)", fontsize=13, fontweight="bold")
+
+    for idx in range(show_n):
+        ax = axes[idx // ncols][idx % ncols]
+        ax.plot([0, 1], [0, 1], "k--", lw=0.8, alpha=0.4)
+        if idx in supported and y_true_arr[:, idx].sum() >= 5:
+            n_bins = min(10, max(3, int(y_true_arr[:, idx].sum() // 3)))
+            try:
+                frac, mean_pred = calibration_curve(
+                    y_true_arr[:, idx], y_proba_arr[:, idx],
+                    n_bins=n_bins, strategy="quantile",
+                )
+                ax.plot(mean_pred, frac, "o-", color="tab:blue", ms=5, lw=1.5)
+                ax.fill_between(mean_pred, frac, mean_pred, alpha=0.15, color="tab:blue")
+            except ValueError:
+                ax.text(0.5, 0.5, "too few samples", ha="center", va="center",
+                        transform=ax.transAxes, fontsize=8, color="gray")
+        else:
+            ax.text(0.5, 0.5, "no positive samples", ha="center", va="center",
+                    transform=ax.transAxes, fontsize=8, color="gray")
+        ax.set_title(labels[idx], fontsize=10)
+        ax.set(xlabel="Mean predicted score", ylabel="Fraction of positives",
+               xlim=(0, 1), ylim=(0, 1))
+
+    for idx in range(show_n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_errors(y_true, y_proba, threshold=0.5, max_labels_grid=12):
+    """Full multilabel error inspection: ROC/PR curves, score distributions,
+    confusion breakdown, and calibration diagrams."""
+    plot_multilabel_roc_pr(y_true, y_proba)
+    plot_multilabel_score_distributions(y_true, y_proba, threshold=threshold,
+                                        max_labels=max_labels_grid)
+    plot_multilabel_confusion_breakdown(y_true, y_proba, threshold=threshold)
+    plot_multilabel_calibration(y_true, y_proba, max_labels=max_labels_grid)
+
+
+# ---------------------------------------------------------------------------
+# Many-label (200+) aggregate views — no per-label subplots
+# ---------------------------------------------------------------------------
+
+def plot_multilabel_metric_distribution(y_true, y_proba, bins=20):
+    """Histograms of per-label AUC-ROC and AP for the many-label case."""
+    labels, _, _, supported, aucs, aps = _multilabel_inputs(y_true, y_proba)
+
+    auc_vals = np.array([aucs[j] for j in supported])
+    ap_vals  = np.array([aps[j]  for j in supported])
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    fig.suptitle(
+        f"Per-label metric distribution  ({len(supported)} labels with both classes)",
+        fontsize=12, fontweight="bold",
+    )
+
+    for ax_, vals, metric, color in [
+        (ax1, auc_vals, "AUC-ROC", "tab:blue"),
+        (ax2, ap_vals,  "AP",      "tab:orange"),
+    ]:
+        ax_.hist(vals, bins=bins, color=color, alpha=0.8, edgecolor="white")
+        ax_.axvline(np.mean(vals),   color="black",   lw=1.5, ls="--",
+                    label=f"mean={np.mean(vals):.3f}")
+        ax_.axvline(np.median(vals), color="crimson", lw=1.5, ls=":",
+                    label=f"median={np.median(vals):.3f}")
+        ax_.set(xlabel=metric, ylabel="Number of labels",
+                title=f"{metric} distribution")
+        ax_.legend(fontsize=9)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_metric_ranked(y_true, y_proba, metric="auc", top_n=20, bottom_n=20):
+    """Horizontal bar chart of top-N best and bottom-N worst labels by AUC or AP.
+
+    Avoids plotting all 200+ labels while surfacing where the model wins and loses.
+    """
+    labels, _, _, supported, aucs, aps = _multilabel_inputs(y_true, y_proba)
+
+    scores = aucs if metric.lower() == "auc" else aps
+    score_series = pd.Series(
+        {labels[j]: scores[j] for j in supported}
+    ).sort_values(ascending=False)
+
+    n_total  = len(score_series)
+    actual_top = min(top_n, n_total)
+    actual_bot = min(bottom_n, n_total - actual_top)
+
+    # Sort each group ascending so the extreme values are at the chart edges
+    top = score_series.head(actual_top).sort_values(ascending=True)
+    bot = score_series.tail(actual_bot).sort_values(ascending=True)
+    show = pd.concat([bot, top])
+
+    colors = ["tab:red"] * len(bot) + ["tab:green"] * len(top)
+
+    fig, ax = plt.subplots(figsize=(8, max(4, len(show) * 0.32)))
+    ax.barh(range(len(show)), show.values, color=colors, edgecolor="white")
+    ax.set_yticks(range(len(show)))
+    ax.set_yticklabels(show.index, fontsize=8)
+
+    sep = len(bot) - 0.5
+    ax.axhline(sep, color="gray", lw=1.5, ls="--", alpha=0.8)
+    ax.text(
+        show.min(), sep + 0.15,
+        f"↑ worst {actual_bot}   |   best {actual_top} ↑",
+        fontsize=8, color="gray", va="bottom",
+    )
+
+    mean_val = score_series.mean()
+    ax.axvline(mean_val, color="black", lw=1.2, ls=":", alpha=0.7,
+               label=f"mean={mean_val:.3f}")
+
+    metric_name = "AUC-ROC" if metric.lower() == "auc" else "AP"
+    ax.set(
+        xlabel=metric_name,
+        title=f"Top-{actual_top} / Bottom-{actual_bot} labels by {metric_name}"
+              f"  (n={n_total} total)",
+    )
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_pr_scatter(y_true, y_proba, threshold=0.5, annotate_n=10):
+    """Precision vs Recall scatter — one point per label.
+
+    Scales to 200+ labels. Points are sized by label support (number of positives)
+    and coloured by F1 score. The annotate_n lowest-F1 labels are annotated.
+    """
+    labels, y_true_arr, y_proba_arr, supported, *_ = _multilabel_inputs(y_true, y_proba)
+    y_pred_arr = (y_proba_arr >= threshold).astype(int)
+
+    records = []
+    for j in supported:
+        tp = int((y_pred_arr[:, j] & y_true_arr[:, j]).sum())
+        fp = int((y_pred_arr[:, j] & (1 - y_true_arr[:, j])).sum())
+        fn = int(((1 - y_pred_arr[:, j]) & y_true_arr[:, j]).sum())
+        support = int(y_true_arr[:, j].sum())
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec  = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1   = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+        records.append(dict(label=labels[j], precision=prec, recall=rec,
+                            f1=f1, support=support))
+
+    df = pd.DataFrame(records)
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    # Iso-F1 reference contours
+    for f1_val in [0.2, 0.4, 0.6, 0.8]:
+        rec_range = np.linspace(f1_val / (2 - f1_val) + 1e-4, 1, 200)
+        prec_range = f1_val * rec_range / (2 * rec_range - f1_val)
+        mask = (prec_range >= 0) & (prec_range <= 1)
+        ax.plot(rec_range[mask], prec_range[mask], color="gray",
+                lw=0.8, ls="--", alpha=0.35)
+        if mask.sum() > 10:
+            mid = mask.sum() // 2
+            ax.text(rec_range[mask][mid], prec_range[mask][mid],
+                    f"F1={f1_val}", fontsize=7, color="gray", alpha=0.6)
+
+    scatter = ax.scatter(
+        df["recall"], df["precision"],
+        c=df["f1"], cmap="RdYlGn", vmin=0, vmax=1,
+        s=np.clip(df["support"], 5, 300) * 0.9,
+        alpha=0.75, edgecolors="white", linewidths=0.4,
+    )
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("F1 score")
+
+    for _, row in df.nsmallest(annotate_n, "f1").iterrows():
+        ax.annotate(
+            row["label"], (row["recall"], row["precision"]),
+            textcoords="offset points", xytext=(4, 4),
+            fontsize=7, color="darkred", alpha=0.85,
+        )
+
+    ax.set(
+        xlabel="Recall", ylabel="Precision",
+        xlim=(-0.05, 1.05), ylim=(-0.05, 1.05),
+        title=f"Precision–Recall per label  (threshold={threshold},"
+              f" n={len(df)} labels)",
+    )
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_calibration_summary(y_true, y_proba, bins=10):
+    """ECE distribution across labels — compact calibration view for 200+ labels."""
+    labels, y_true_arr, y_proba_arr, supported, *_ = _multilabel_inputs(y_true, y_proba)
+
+    eces = []
+    bin_edges = np.linspace(0, 1, bins + 1)
+    for j in supported:
+        p = y_proba_arr[:, j]
+        t = y_true_arr[:, j].astype(float)
+        n = len(p)
+        ece = 0.0
+        for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+            mask = (p >= lo) & (p < hi)
+            if mask.sum() == 0:
+                continue
+            ece += mask.sum() / n * abs(p[mask].mean() - t[mask].mean())
+        eces.append(ece)
+
+    eces = np.array(eces)
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+    ax.hist(eces, bins=20, color="tab:purple", alpha=0.8, edgecolor="white")
+    ax.axvline(np.mean(eces),   color="black",   lw=1.5, ls="--",
+               label=f"mean ECE={np.mean(eces):.3f}")
+    ax.axvline(np.median(eces), color="crimson", lw=1.5, ls=":",
+               label=f"median ECE={np.median(eces):.3f}")
+    ax.set(
+        xlabel="ECE", ylabel="Number of labels",
+        title=f"Expected Calibration Error distribution  ({len(eces)} labels)",
+    )
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_multilabel_errors_large(y_true, y_proba, threshold=0.5, top_n=20, annotate_n=10):
+    """Aggregate multilabel error analysis for the many-label case (200+).
+
+    Uses summary views instead of per-label subplots:
+      1. AUC-ROC and AP histograms
+      2. Ranked top/bottom labels by AUC
+      3. Precision-Recall scatter (one point per label, coloured by F1)
+      4. ECE distribution (calibration summary)
+    """
+    plot_multilabel_metric_distribution(y_true, y_proba)
+    plot_multilabel_metric_ranked(y_true, y_proba, metric="auc",
+                                  top_n=top_n, bottom_n=top_n)
+    plot_multilabel_pr_scatter(y_true, y_proba, threshold=threshold,
+                               annotate_n=annotate_n)
+    plot_multilabel_calibration_summary(y_true, y_proba)
 
 
 def plot_corr_cirle(X, pca):

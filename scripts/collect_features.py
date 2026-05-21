@@ -34,10 +34,10 @@ if NB_EXAMPLES is not None:
 else:
     train_idx = train_soundscapes_idx = None
 
-# print("\n[1/2] Extracting features for train audio...", flush=True)
-# data_train = prepare_data(df_train, df_taxonomy, sample_idx=train_idx)
-# elapsed = time.time() - start
-# print(f"  done in {elapsed/60:.1f} min — shape: {data_train['X'].shape}", flush=True)
+print("\n[1/2] Extracting features for train audio...", flush=True)
+data_train = prepare_data(df_train, df_taxonomy, sample_idx=train_idx)
+elapsed = time.time() - start
+print(f"  done in {elapsed/60:.1f} min — shape: {data_train['X'].shape}", flush=True)
 
 print("\n[2/2] Extracting features for train soundscapes...", flush=True)
 data_train_soundscapes = prepare_data(
@@ -48,8 +48,8 @@ print(f"  done in {elapsed/60:.1f} min — shape: {data_train_soundscapes['X'].s
 
 if SAVE_DATA:
     print("\nSaving results...", flush=True)
-    # save_results(data_train, "features/collected", "data_train")
-    save_results(data_train_soundscapes, "features/collected", "data_train_soundscapes")
+    save_results(data_train, "data_train", "features/collected")
+    save_results(data_train_soundscapes, "data_train_soundscapes", "features/collected")
     print("  saved to results/features/collected/", flush=True)
 
 print(f"\nTotal time: {(time.time() - start)/60:.1f} min", flush=True)

@@ -72,9 +72,12 @@ def load_audio(row: pd.Series, train=True):
         return load_train_audio(row.name)
 
 
-def save_results(result, out_dir, fname):
-    with open(RESULTS_DIR / out_dir / f"{fname}.pkl", "wb") as file:
-        pickle.dump(result, file)
+def save_results(result, fname, out_dir=None):
+    if isinstance(result, pd.DataFrame):
+        result.to_csv(RESULTS_DIR/"tables"/f"{fname}.csv", header=False)
+    else:
+        with open(RESULTS_DIR / out_dir / f"{fname}.pkl", "wb") as file:
+            pickle.dump(result, file)
 
 
 def load_results(out_dir, fname, subdir="frozen"):
