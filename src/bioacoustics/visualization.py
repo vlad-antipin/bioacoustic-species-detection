@@ -1,36 +1,40 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from matplotlib.patches import Patch
 import seaborn as sns
 import librosa.display
 
 from .config import SR, HOP_LENGTH
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+CLASS_COLORS = {
+    "Amphibia": "tab:green",
+    "Aves": "tab:blue",
+    "Mammalia": "tab:red",
+    "Reptilia": "tab:orange",
+    "Insecta": "tab:purple",
+}
+
 
 def set_style():
-    plt.rcParams.update({
-        "figure.figsize": (8, 5),
-        "figure.dpi": 100,
-
-        "axes.titlesize": 12,
-        "axes.labelsize": 10,
-
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-
-        # "axes.grid": True,
-        # "grid.alpha": 0.2,
-
-        "lines.linewidth": 1.8,
-
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-
-        "legend.fontsize": 9,
-
-        "font.family": "DejaVu Sans",
-    })
+    plt.rcParams.update(
+        {
+            "figure.figsize": (8, 5),
+            "figure.dpi": 100,
+            "axes.titlesize": 12,
+            "axes.labelsize": 10,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            # "axes.grid": True,
+            # "grid.alpha": 0.2,
+            "lines.linewidth": 1.8,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "legend.fontsize": 9,
+            "font.family": "DejaVu Sans",
+        }
+    )
 
 
 def plot_label_frequency(df_label, log=True, ax=None):
@@ -68,7 +72,7 @@ def plot_label_concurrence(df_label, normalize=True, ax=None):
     ax.set_title("Label co-occurrence matrix" + " (normalized)" if normalize else "")
 
 
-def plot_waveform(audio, ax=None, title=None,sr=SR):
+def plot_waveform(audio, ax=None, title=None, sr=SR):
     fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     librosa.display.waveshow(audio, sr=sr, alpha=0.5, ax=ax)
@@ -133,7 +137,9 @@ def plot_cepstrum_pipeline(audio, sr=SR):
     plt.show()
 
 
-def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_axis="linear"):
+def plot_spectrogram(
+    S_db, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, y_axis="linear"
+):
     fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     img = librosa.display.specshow(
@@ -154,10 +160,8 @@ def plot_spectrogram(S_db, ax=None, title=None,sr=SR, hop_length=HOP_LENGTH, y_a
     return ax
 
 
-
 def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
     fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
-
 
     img = librosa.display.specshow(
         mfccs,
@@ -165,7 +169,7 @@ def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
         hop_length=hop_length,
         x_axis="time",
         y_axis="frames",
-        cmap="RdBu_r",       
+        cmap="RdBu_r",
         vmin=np.percentile(mfccs[1:], 2),
         vmax=np.percentile(mfccs[1:], 98),
         ax=ax,
@@ -184,7 +188,9 @@ def plot_mfcc(mfccs, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH):
     return ax
 
 
-def plot_chroma_stft(chroma, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, show=True):
+def plot_chroma_stft(
+    chroma, ax=None, title=None, sr=SR, hop_length=HOP_LENGTH, show=True
+):
     fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
 
     img = librosa.display.specshow(
@@ -244,4 +250,322 @@ def plot_onsets(audio, sr=SR):
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Onset Strength")
 
+    plt.show()
+
+
+def plot_importance_heatmap(df, top_n=20):
+
+    # Keep only top-N features by mean importance across classes
+
+    top_features = df.mean().nlargest(top_n).index
+    df_top = df[top_features]
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(14, max(8, len(df_top) * 0.12)))
+    sns.heatmap(
+        df_top,
+        ax=ax,
+        cmap="viridis",
+        xticklabels=True,
+        yticklabels=(len(df) < 10),
+        cbar_kws={"label": "Feature Importance"},
+    )
+    ax.set_xlabel("Feature")
+    ax.set_ylabel("Class (estimator index)")
+    ax.set_title(f"Top {top_n} Features by Mean Importance Across All Classes")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_importance_mean(df, top_n=20):
+    top_features = df.mean().nlargest(top_n).index
+    fig, ax = plt.subplots(figsize=(10, 5))
+    df[top_features].mean().sort_values(ascending=True).plot.barh(ax=ax)
+    ax.set_title("Mean Feature Importance Across All Classes")
+    ax.set_xlabel("Mean Importance")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_class_distribution(data_train, data_train_soundscapes):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    data_train["y_class"].sum().plot.bar(ax=axes[0])
+    axes[0].set_xlabel("Class")
+    axes[0].set_ylabel("Count")
+    axes[0].set_title("Class Distribution of Train Audio")
+    axes[0].tick_params(axis="x", rotation=0)
+
+    data_train_soundscapes["y_class"].sum().plot.bar(ax=axes[1])
+    axes[1].set_xlabel("Class")
+    axes[1].set_ylabel("Count")
+    axes[1].set_title("Class Distribution of Train Soundscapes")
+    axes[1].tick_params(axis="x", rotation=0)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_species_distribution(
+    data_train, data_train_soundscapes, primary_to_class, class_colors=CLASS_COLORS
+):
+
+    #
+    # Counts
+    #
+    counts_train = data_train["y_primary"].sum()
+    counts_sound = data_train_soundscapes["y_primary"].sum()
+
+    #
+    # Build dataframe using SOUND frequencies
+    # to define the global ordering
+    #
+    df_order = pd.DataFrame(
+        {
+            "sound_count": counts_sound,
+        }
+    )
+
+    df_order["class"] = df_order.index.map(primary_to_class)
+
+    # same class order everywhere
+    class_order = [
+        "Amphibia",
+        "Aves",
+        "Mammalia",
+        "Reptilia",
+        "Insecta",
+    ]
+
+    df_order["class"] = pd.Categorical(
+        df_order["class"],
+        categories=class_order,
+        ordered=True,
+    )
+
+    #
+    # Sort:
+    #   1. by class
+    #   2. by soundscape frequency
+    #
+    df_order = df_order.sort_values(
+        by=["class", "sound_count"],
+        ascending=[True, False],
+    )
+
+    # final common species ordering
+    species_order = df_order.index
+
+    # Reindex both datasets with same ordering
+    counts_train = counts_train.reindex(species_order)
+    counts_sound = counts_sound.reindex(species_order)
+
+    # Colors
+    classes = [primary_to_class[label] for label in species_order]
+    colors = [class_colors[c] for c in classes]
+
+    # Plotting
+    fig, axes = plt.subplots(2, 1, figsize=(32, 8))
+
+    counts_train.plot.bar(
+        ax=axes[0],
+        color=colors,
+    )
+
+    axes[0].set_xlabel("Species")
+    axes[0].set_ylabel("Count")
+    axes[0].set_title("Class Distribution of Train Audio")
+
+    counts_sound.plot.bar(
+        ax=axes[1],
+        color=colors,
+    )
+
+    axes[1].set_xlabel("Species")
+    axes[1].set_ylabel("Count")
+    axes[1].set_title("Class Distribution of Train Soundscapes")
+
+    # Legend
+    legend_elements = [
+        Patch(facecolor=color, label=cls) for cls, color in class_colors.items()
+    ]
+
+    fig.legend(handles=legend_elements)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_corr_matrix(corr_matrix):
+    plt.figure(figsize=(20, 16))
+
+    sns.heatmap(
+        corr_matrix,
+        cmap="coolwarm",
+        center=0,
+        square=True,
+    )
+
+    plt.title("Correlation Matrix")
+    plt.show()
+
+
+def plot_feature_distribution(
+    data,
+    feature,
+    figsize=(10, 5),
+    jitter=True,
+    alpha=0.5,
+    point_size=3,
+):
+    x = data["X"][[feature]]
+    y = data["y_class"]
+
+    # Convert one-hot labels to long format
+    df_plot = (
+        x.join(y)
+        .melt(
+            id_vars=feature,
+            var_name="category",
+            value_name="active",
+        )
+        .query("active == 1")
+    )
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Boxplot
+    sns.boxplot(
+        data=df_plot,
+        x="category",
+        y=feature,
+        ax=ax,
+    )
+
+    # Individual points
+    sns.stripplot(
+        data=df_plot,
+        x="category",
+        y=feature,
+        ax=ax,
+        jitter=jitter,
+        alpha=alpha,
+        size=point_size,
+    )
+
+    ax.set_title(f"Distribution of {feature} by category")
+    ax.set_xlabel("Category")
+    ax.set_ylabel(feature)
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_dim_reduction(
+    X_pca, y, all_class_combinations=False, class_colors=CLASS_COLORS
+):
+    # TODO: Investigate whether it overrides some of the class
+    if all_class_combinations:
+        y_labels = y.apply(
+            lambda row: ", ".join(row.index[row == 1]),
+            axis=1,
+        )
+        df_pca = pd.DataFrame(
+            {
+                "PC1": X_pca[:, 0],
+                "PC2": X_pca[:, 1],
+                "y_class": y_labels.values,
+            }
+        )
+    else:
+        df_pca = (
+            pd.DataFrame(
+                {
+                    "PC1": X_pca[:, 0],
+                    "PC2": X_pca[:, 1],
+                },
+                index=y.index,
+            )
+            .join(y)
+            .melt(
+                id_vars=["PC1", "PC2"],
+                var_name="y_class",
+                value_name="active",
+            )
+            .query("active == 1")
+        )
+
+    plt.figure(figsize=(10, 8))
+
+    for cls in df_pca["y_class"].unique():
+        subset = df_pca[df_pca["y_class"] == cls]
+
+        plt.scatter(
+            subset["PC1"],
+            subset["PC2"],
+            color=class_colors[cls] if not all_class_combinations else None,
+            label=cls,
+            alpha=0.5,
+        )
+
+    plt.xlabel("Dim 1")
+    plt.ylabel("Dim 2")
+    plt.title("Feature Space Dimension Reduction")
+    plt.legend()
+    plt.show()
+
+
+def plot_corr_cirle(X, pca):
+    # Feature names
+    features = X.columns
+
+    # Loadings
+    loadings = pca.components_.T
+
+    # Scale by explained variance
+    loadings = loadings * np.sqrt(pca.explained_variance_)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Draw unit circle
+    circle = plt.Circle((0, 0), 1, color="gray", fill=False)
+    ax.add_artist(circle)
+
+    # Draw arrows
+    for i, feature in enumerate(features):
+        x_vector = loadings[i, 0]
+        y_vector = loadings[i, 1]
+
+        ax.arrow(
+            0,
+            0,
+            x_vector,
+            y_vector,
+            color="tab:blue",
+            alpha=0.5,
+            head_width=0.02,
+        )
+
+        ax.text(
+            x_vector * 1.05,
+            y_vector * 1.05,
+            feature,
+            fontsize=8,
+        )
+
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_title("Correlation Circle")
+
+    ax.axhline(0, color="gray", linewidth=1)
+    ax.axvline(0, color="gray", linewidth=1)
+
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
+
+    ax.set_aspect("equal")
+
+    plt.tight_layout()
     plt.show()

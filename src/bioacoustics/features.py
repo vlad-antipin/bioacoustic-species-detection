@@ -26,7 +26,9 @@ from .config import (
     ROLLOFF_PERCENT,
     N_SELECTED_BANDS,
     CHUNK_DURATION,
+    HOP_DURATION,
     TOP_FRACTION_CHUNKS,
+    CENTER_CHUNK,
     PERCENTILES_ZCR,
     PERCENTILES_RMS,
     PERCENTILES_SPECTRAL,
@@ -92,8 +94,9 @@ def add_percentiles(name, values, features, q=[10, 50, 60]):
         features[f"{name}_p{i}"] = perc
 
 
-def add_basic_signal_stats(audio, features):
-    features["mean"] = np.mean(audio)
+def add_basic_signal_stats(audio, features, include_mean=True):
+    if include_mean:
+        features["mean"] = np.mean(audio)
     features["std"] = np.std(audio)
     features["max"] = np.max(audio)
     features["min"] = np.min(audio)
@@ -123,7 +126,7 @@ def add_rms_energy_stats(
     features["rms_frame_min"] = rms_frame.min()
 
     if include_percentiles:
-        add_percentiles("centroid", rms_frame, features, q=q)
+        add_percentiles("rms_frame", rms_frame, features, q=q)
 
 
 def add_spectrogram(audio, features, kwargs=STFT_KWARGS):
@@ -188,7 +191,7 @@ def add_spectral_features(
         add_percentiles("flatness", spectral_flatness, features, q=q)
 
         for i, band in enumerate(spectral_contrast):
-            add_percentiles("contrast_band{i}", spectral_contrast, features, q=q_band)
+            add_percentiles(f"contrast_band{i}", band, features, q=q_band)
 
 
 def add_modulation(
@@ -202,7 +205,6 @@ def add_modulation(
     # option 1: autocorrelate (slow)
     # acf = np.correlate(band_signal, band_signal, mode="full")
     # option 2: temporal FFT
-    modulation = np.abs(np.fft.rfft(band_signal))
     modulation = np.abs(np.fft.rfft(band_signal))
     modulation_freqs = np.fft.rfftfreq(len(band_signal), d=1 / frame_rate)
 
@@ -350,15 +352,17 @@ def add_onset_features(
         add_percentiles("onset_interval", intervals, features, q=q_ioi)
 
 
-def get_chunk_features(audio: NDArray, sr=SR) -> pd.Series:
+def get_chunk_features(audio: NDArray, sr=SR, center=True) -> pd.Series:
     """Extract a rich set of audio features from a waveform."""
+    if center:
+        audio -= np.mean(audio)
 
     if len(audio) < sr * 0.5:  # shorter than 0.5 sec
         return pd.Series({})
 
     features = {}
 
-    add_basic_signal_stats(audio, features)
+    add_basic_signal_stats(audio, features, include_mean=not center)
 
     add_zero_crossing_rate(audio, features, include_percentiles=True)
 
@@ -386,38 +390,31 @@ def get_chunk_features(audio: NDArray, sr=SR) -> pd.Series:
 def get_features(
     audio,
     sr=SR,
+    center=CENTER_CHUNK,
     get_chunk_features=get_chunk_features,
     chunk_duration=CHUNK_DURATION,
+    hop_duration=HOP_DURATION,
     top_fraction=TOP_FRACTION_CHUNKS,
 ) -> pd.Series:
     """
-    Split recording into chunks, score each, keep top-k,
+    Split recording into overlapping chunks, score each, keep top-k,
     extract features, return median across selected chunks.
 
     Returns empty series if no valid chunks are found.
     """
-    # TODO: try chunks with overlaps?
-    chunk_len = chunk_duration * sr
-    n_chunks = len(audio) // chunk_len
+    chunk_len = int(chunk_duration * sr)
+    hop_len = int(hop_duration * sr)
 
-    if n_chunks == 0:
+    starts = range(0, len(audio) - chunk_len + 1, hop_len)
+    if not starts:
         return pd.Series({})
 
-    scores = []
-    for i in range(n_chunks):
-        chunk = audio[i * chunk_len : (i + 1) * chunk_len]
-        score = chunk_quality_score(chunk, sr)
-        scores.append((score, i))
-
+    scores = [(chunk_quality_score(audio[s : s + chunk_len], sr), s) for s in starts]
     scores.sort(key=lambda x: x[0], reverse=True)
     k = max(1, round(len(scores) * top_fraction))
-    selected_indices = [idx for _, idx in scores[:k]]
 
-    feature_rows = []
-    for idx in selected_indices:
-        chunk = audio[idx * chunk_len : (idx + 1) * chunk_len]
-        features = get_chunk_features(chunk, sr)
-        feature_rows.append(features)
+    feature_rows = [
+        get_chunk_features(audio[s : s + chunk_len], sr, center) for _, s in scores[:k]
+    ]
 
-    feature_matrix = pd.DataFrame(feature_rows)
-    return feature_matrix.median(axis=0)
+    return pd.DataFrame(feature_rows).median(axis=0)

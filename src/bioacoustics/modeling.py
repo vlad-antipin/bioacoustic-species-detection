@@ -159,17 +159,27 @@ def split_data(data_train, data_soundscapes, fit_mode, test_size=0.2, random_sta
     return X_train, X_test, y_class_train, y_class_test, y_primary_train, y_primary_test
 
 
+class BalancedXGBClassifier(XGBClassifier):
+    """XGBClassifier that automatically sets scale_pos_weight from the binary labels OvR passes."""
+
+    def fit(self, X, y, **kwargs):
+        pos = (y == 1).sum()
+        neg = (y == 0).sum()
+        self.set_params(scale_pos_weight=neg / pos if pos > 0 else 1.0)
+        return super().fit(X, y, **kwargs)
+
+
 def get_prediction_pipeline(classifier: Classifier):
     if classifier == Classifier.LR:
         clf = LogisticRegression(
-            solver="liblinear", max_iter=1000, class_weight="balanced"
+            solver="liblinear", max_iter=1000, class_weight="balanced", l1_ratio=0.5
         )
     elif classifier == Classifier.RF:
         clf = RandomForestClassifier(
             n_estimators=200, max_depth=None, n_jobs=-1, class_weight="balanced"
         )
     elif classifier == Classifier.XGBOOST:
-        clf = XGBClassifier(
+        clf = BalancedXGBClassifier(
             n_estimators=300,
             max_depth=6,
             learning_rate=0.05,
@@ -196,32 +206,70 @@ def get_prediction_pipeline(classifier: Classifier):
 class HierarchicalMixtureOfExperts:
     def __init__(self, n_experts, classifier) -> None:
         self.expert_pipelines = []
+        self.n_experts = n_experts
+        self.child_masks = []
         for _ in range(n_experts):
             self.expert_pipelines.append(get_prediction_pipeline(classifier))
-            self.n_experts = n_experts
 
     def fit(self, X, y_parent, y_child):
         assert self.n_experts == len(y_parent.columns), (
             "Number of experts doesn't match the number of parent labels"
         )
+        self.child_masks = []
         self.n_children = y_child.shape[1]
         for i, parent in enumerate(y_parent.columns):
             expert_mask = y_parent[parent] == 1
-            # TODO: restrain only to species that actually belong to this class
+            # restrain only to species that actually belong to this parent class
+            child_mask = y_child[expert_mask].any(axis=0)
+            self.child_masks.append(child_mask)
+
             with tqdm_joblib(
-                desc=f"Training expert for {parent.ljust(10)}", total=self.n_children
+                desc=f"Training expert for {parent.ljust(10)}", total=sum(child_mask)
             ):
-                self.expert_pipelines[i].fit(X[expert_mask], y_child[expert_mask])
+                self.expert_pipelines[i].fit(
+                    X[expert_mask], y_child[expert_mask].loc[:, child_mask]
+                )
 
     def predict_proba(self, X, y_parent_proba):
-        # TODO: check whether it's right
-        y_child_per_expert = np.empty((self.n_experts, len(X), self.n_children))
+        if isinstance(y_parent_proba, pd.DataFrame):
+            y_parent_proba = y_parent_proba.values
+        # mixture formula assumes that parent probabilities sum to 1 per sample
+        y_parent_proba /= y_parent_proba.sum(axis=1, keepdims=True)
+        y_child_per_expert = np.zeros((self.n_experts, len(X), self.n_children))
         for i, expert_pipeline in enumerate(self.expert_pipelines):
-            y_child_per_expert[i] = expert_pipeline.predict_proba(X)
+            y_child_expert = expert_pipeline.predict_proba(X)
+            if y_child_expert.shape[1] == 2:
+                # only one child for a parent -> binary classification
+                y_child_expert = y_child_expert[:, 1]
+            y_child_per_expert[i, :, self.child_masks[i]] = y_child_expert.T
+
         y_child_mixture = (y_child_per_expert * y_parent_proba.T[..., None]).sum(axis=0)
-        # TODO: correct proba normalization
+        # TODO: correct proba normalization?
         return y_child_mixture
 
     def predict(self, X, y_parent_proba, threshold=0.5):
         y_proba = self.predict_proba(X, y_parent_proba)
         return (y_proba >= threshold).astype(int)
+
+
+def get_feature_importance(
+    pipeline,
+    class_names=None,
+    named_step="clf",
+):
+    model = pipeline.named_steps[named_step]
+    feature_names = pipeline[:-1].get_feature_names_out()
+    importances = np.array(
+        [
+            est.feature_importances_
+            if hasattr(est, "feature_importances_")
+            else est.coef_[0]
+            for est in model.estimators_
+            if hasattr(est, "feature_importances_") or hasattr(est, "coef_")
+        ]
+    )
+
+    df = pd.DataFrame(importances, columns=feature_names)
+    if class_names is not None and len(df) == len(class_names):
+        df.index = class_names
+    return df

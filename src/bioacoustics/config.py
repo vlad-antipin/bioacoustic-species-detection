@@ -54,7 +54,9 @@ EPS = 1e-9
 
 # Audio chunking
 CHUNK_DURATION = 5  # seconds
+HOP_DURATION = 2.5  # seconds between chunk starts (50 % overlap)
 TOP_FRACTION_CHUNKS = 0.4  # keep best 40% of chunks
+CENTER_CHUNK = True
 
 # Percentiles
 
