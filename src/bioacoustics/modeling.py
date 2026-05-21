@@ -348,14 +348,14 @@ def get_feature_importance(
 
 
 def smooth_group(group, sigma=2):
-    return group.apply(lambda col: gaussian_filter1d(col.values, sigma=sigma))
-
+    smoothed = group.apply(lambda col: gaussian_filter1d(col.values, sigma=sigma))
+    smoothed.index = group.index 
+    return smoothed
 
 def smooth_proba(y, sigma=2):
-    ''' Temporal Gaussian smoothing on probabilities'''
-    y_smooth = (
+    return (
         y.sort_index()
-        .groupby(level=0, group_keys=True)
+        .groupby(level=0, group_keys=False) 
         .apply(lambda g: smooth_group(g, sigma=sigma))
     )
-    return y_smooth
+

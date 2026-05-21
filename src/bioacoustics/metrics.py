@@ -8,9 +8,18 @@ from sklearn.metrics import (
     label_ranking_average_precision_score,
 )
 
+import pandas as pd
 
-def evaluate_multilabel_model(model, X_test, y_test, y_parent_proba=None):
+from .modeling import smooth_proba
+
+
+def evaluate_multilabel_model(
+    model, X_test, y_test, y_parent_proba=None, smooth_sigma=0
+):
     """
+    The metric they use in BirdClef is macro ROC-AUC a a version of
+    macro-averaged ROC-AUC that skips classes that have no true positive labels.
+
     Macro - metric computed per class then averaged, giving each label
     equal weight regardless of frequency.
 
@@ -32,9 +41,13 @@ def evaluate_multilabel_model(model, X_test, y_test, y_parent_proba=None):
     if y_parent_proba is None:
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)
+
     else:
         y_pred = model.predict(X_test, y_parent_proba)
         y_proba = model.predict_proba(X_test, y_parent_proba)
+    if smooth_sigma:
+        y_proba_df = pd.DataFrame(y_proba, index=X_test.index)
+        y_proba = np.asarray(smooth_proba(y_proba_df, sigma=smooth_sigma).loc[X_test.index])
 
     y_test_arr = np.asarray(y_test)
     y_pred_arr = np.asarray(y_pred)
