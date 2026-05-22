@@ -76,7 +76,7 @@ def load_audio(row: pd.Series, train=True):
 
 def save_results(result, fname, out_dir=None):
     if isinstance(result, pd.DataFrame):
-        result.to_csv(RESULTS_DIR / "tables" / f"{fname}.csv", header=False)
+        result.to_csv(RESULTS_DIR / "tables" / f"{fname}.csv")
     else:
         with open(RESULTS_DIR / out_dir / f"{fname}.pkl", "wb") as file:
             pickle.dump(result, file)

@@ -8,6 +8,8 @@ import librosa.display
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
+from .config import RESULTS_DIR
+
 from .config import SR, HOP_LENGTH
 
 CLASS_COLORS = {
@@ -38,6 +40,9 @@ def set_style():
         }
     )
 
+def savefig(fname):
+    plt.savefig(RESULTS_DIR / "figures"/ f"{fname}.pdf")
+    
 
 def plot_label_frequency(df_label, log=True, ax=None):
     fig, ax = plt.subplots() if ax is None else (ax.figure, ax)
@@ -268,20 +273,18 @@ def plot_importance_heatmap(df, top_n=20):
     )
     ax.set_xlabel("Feature")
     ax.set_ylabel("Class (estimator index)")
-    ax.set_title(f"Top {top_n} Features by Mean Importance Across All Classes")
+    # ax.set_title(f"Top {top_n} Features by Mean Importance Across All Classes")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
-    plt.show()
 
 
 def plot_importance_mean(df, top_n=20):
     top_features = df.mean().nlargest(top_n).index
     fig, ax = plt.subplots(figsize=(10, 5))
     df[top_features].mean().sort_values(ascending=True).plot.barh(ax=ax)
-    ax.set_title("Mean Feature Importance Across All Classes")
+    # ax.set_title("Mean Feature Importance Across All Classes")
     ax.set_xlabel("Mean Importance")
     plt.tight_layout()
-    plt.show()
 
 
 def plot_class_distribution(data_train, data_train_soundscapes, save_file=None):
@@ -302,7 +305,6 @@ def plot_class_distribution(data_train, data_train_soundscapes, save_file=None):
     fig.tight_layout()
     if save_file:
         fig.savefig(save_file)
-    plt.show()
 
 
 def plot_species_distribution(
@@ -634,26 +636,26 @@ def plot_multilabel_confusion_breakdown(y_true, y_proba, threshold=0.5):
     for xi, (t, f, fn_) in enumerate(zip(tp, fp, fn)):
         prec_ = t / (t + f) if (t + f) > 0 else float("nan")
         rec_ = t / (t + fn_) if (t + fn_) > 0 else float("nan")
-        ax.text(
-            xi,
-            tp[xi] + fp[xi] + fn[xi] + tn[xi] + 1,
-            f"P={prec_:.2f}\nR={rec_:.2f}",
-            ha="center",
-            va="bottom",
-            fontsize=7.5,
-        )
+        # ax.text(
+        #     xi,
+        #     tp[xi] + fp[xi] + fn[xi] + tn[xi] + 1,
+        #     f"P={prec_:.2f}\nR={rec_:.2f}",
+        #     ha="center",
+        #     va="bottom",
+        #     fontsize=7.5,
+        # )
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=30, ha="right")
-    ax.set_title(
-        f"Prediction Breakdown per Label  (threshold={threshold})",
-        fontsize=12,
-        fontweight="bold",
-    )
+    # ax.set_title(
+    #     f"Prediction Breakdown per Label  (threshold={threshold})",
+    #     fontsize=12,
+    #     fontweight="bold",
+    # )
     ax.set_ylabel("Count")
     ax.legend(loc="upper right")
     fig.tight_layout()
-    plt.show()
+    # plt.show()
 
 
 def plot_multilabel_calibration(y_true, y_proba, max_labels=12):

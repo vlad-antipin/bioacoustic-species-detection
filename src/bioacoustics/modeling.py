@@ -345,11 +345,11 @@ def get_prediction_pipeline(
     """
     if classifier == Classifier.LR:
         params = dict(
-            solver="saga",
+            solver="lbfgs",
             max_iter=1000,
             tol=1e-2,
             class_weight="balanced",
-            l1_ratio=0.5,
+            l1_ratio=0, # L2 (ridge)
         )
         params.update(clf_kwargs)
         clf = LogisticRegression(**params)
@@ -362,7 +362,7 @@ def get_prediction_pipeline(
     elif classifier == Classifier.SVM:
         params = dict(kernel="linear", probability=True, class_weight="balanced")
         params.update(clf_kwargs)
-        clf = SVC(**params)  # type: ignore[arg-type]
+        clf = SVC(**params) 
     elif classifier == Classifier.XGBOOST:
         params = dict(
             n_estimators=300,
@@ -372,6 +372,7 @@ def get_prediction_pipeline(
             colsample_bytree=0.8,
             tree_method="hist",
             eval_metric="logloss",
+            nthread=1,
         )
         params.update(clf_kwargs)
         clf = BalancedXGBClassifier(**params)
@@ -413,9 +414,9 @@ def select_classifier(
     X,
     y,
     param_grids: dict,
-    n_cv_folds: int = 3,
+    n_cv_folds: int = 5,
     nan_strategy: str = "auto",
-    n_jobs: int = 3,
+    n_jobs: int = 5,
     random_state: int = 42,
     verbose: int = 1,
 ) -> tuple:
@@ -462,6 +463,22 @@ def select_classifier(
         print(f"\n=> Best: {best_classifier.name}, params: {best_params}")
 
     return best_classifier, best_params, gs_results
+
+
+def gs_results_to_df(gs_results: dict) -> pd.DataFrame:
+    """Convert {Classifier: GridSearchCV} to a tidy summary DataFrame sorted by rank."""
+    frames = []
+    for clf_type, gs in gs_results.items():
+        df = pd.DataFrame(gs.cv_results_)
+        param_cols = [c for c in df.columns if c.startswith("param_")]
+        df = df[param_cols + ["mean_test_score", "std_test_score", "rank_test_score"]].copy()
+        df.columns = [
+            c.replace("param_clf__estimator__", "").replace("param_", "")
+            for c in df.columns
+        ]
+        df.insert(0, "classifier", clf_type.name)
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True).sort_values("rank_test_score")
 
 
 class HierarchicalMixtureOfExperts:

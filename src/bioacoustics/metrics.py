@@ -85,12 +85,14 @@ def evaluate_multilabel_model(
     }
 
     if n_zero > 0:
-        col_sup = f"supported ({n_supported}/{n_total} classes)"
-        df = pd.DataFrame.from_dict(rows, orient="index", columns=["all classes", col_sup])
+        df = pd.DataFrame.from_dict(rows, orient="index", columns=["all_classes", "supported_classes"])
+        df.attrs["n_supported"] = n_supported
+        df.attrs["n_total"] = n_total
     else:
         df = pd.DataFrame(
             {k: v[0] for k, v in rows.items()}, index=["value"]
         ).T
+    df.index.name = "metric"
 
     if n_zero > 0:
         print(
