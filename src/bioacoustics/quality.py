@@ -15,7 +15,7 @@ def spectral_flatness_score(audio: NDArray, sr: int) -> float:
 def band_snr_score(
     audio: NDArray, sr: int, f_low: int = 500, f_high: int = 10_000
 ) -> float:
-    """Log SNR of the 500 Hz–10 kHz band relative to out-of-band noise floor."""
+    """Log SNR of the 500 Hz-10 kHz band relative to out-of-band noise floor."""
     S = np.abs(librosa.stft(audio))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
 

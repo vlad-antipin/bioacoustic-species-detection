@@ -11,6 +11,7 @@ Output saved to results/features/embeddings/:
     data_train.pkl, data_train_soundscapes.pkl
     Each dict has keys: X (embeddings DataFrame), y_primary, y_class, metadata.
 """
+
 import sys
 import time
 from pathlib import Path
@@ -27,11 +28,14 @@ from bioacoustics.config import SR
 from bioacoustics.data import load_audio, load_metadata, is_soundscape, save_results
 from bioacoustics.preprocessing import get_labels
 
-MODEL_NAME = "perch_v2_cpu"   # use 'perch_v2' if a GPU is available
-CHUNK_SECONDS = 5             # perch expects 5-second waveforms at 32 kHz
-NB_EXAMPLES = None            # None = full dataset
+MODEL_NAME = "perch_v2_cpu"  # use 'perch_v2' if a GPU is available
+CHUNK_SECONDS = 5  # perch expects 5-second waveforms at 32 kHz
+NB_EXAMPLES = None  # None = full dataset
 SAVE_DATA = True
 OUT_DIR = "features/embeddings"
+COLLECT_TRAIN = True  # NOTE: it is (very) slow
+COLLECT_SOUNDSCAPES = False
+
 
 def chunk_audio(audio: np.ndarray, chunk_samples: int) -> list[np.ndarray]:
     """Split waveform into non-overlapping chunks, zero-padding the last one."""
@@ -53,7 +57,9 @@ def embed_audio(model, audio: np.ndarray, chunk_samples: int) -> np.ndarray:
     for chunk in chunks:
         outputs = model.embed(chunk.astype(np.float32))
         emb = outputs.embeddings
-        embeddings.append(emb.reshape(-1, emb.shape[-1]).mean(axis=0))  # collapse all leading axes → (dim,)
+        embeddings.append(
+            emb.reshape(-1, emb.shape[-1]).mean(axis=0)
+        )  # collapse all leading axes → (dim,)
     return np.stack(embeddings).mean(axis=0)
 
 
@@ -91,32 +97,42 @@ print(f"  train soundscapes: {len(df_train_soundscapes)} segments", flush=True)
 
 if NB_EXAMPLES is not None:
     rng = np.random.default_rng(42)
-    train_idx = rng.integers(0, len(df_train), NB_EXAMPLES)
-    soundscapes_idx = rng.integers(0, len(df_train_soundscapes), NB_EXAMPLES)
-    df_train = df_train.iloc[train_idx]
-    df_train_soundscapes = df_train_soundscapes.iloc[soundscapes_idx]
+    if COLLECT_TRAIN:
+        df_train = df_train.iloc[rng.integers(0, len(df_train), NB_EXAMPLES)]
+    if COLLECT_SOUNDSCAPES:
+        df_train_soundscapes = df_train_soundscapes.iloc[
+            rng.integers(0, len(df_train_soundscapes), NB_EXAMPLES)
+        ]
 
 print(f"\nLoading Perch model '{MODEL_NAME}'...", flush=True)
-
 model = model_configs.load_model_by_name(MODEL_NAME)
 print(f"  model loaded in {time.time() - start:.1f}s", flush=True)
 
-# getting embeddings for all train audio is too slow
-print("Skipping train audio")
-# print("\n[1/2] Embedding train audio...", flush=True)
-# data_train = collect_embeddings(df_train, df_taxonomy, model, chunk_samples)
-# elapsed = time.time() - start
-# print(f"  done in {elapsed/60:.1f} min — shape: {data_train['X'].shape}", flush=True)
+if COLLECT_TRAIN:
+    print("\n[train] Embedding train audio...", flush=True)
+    data_train = collect_embeddings(df_train, df_taxonomy, model, chunk_samples)
+    elapsed = time.time() - start
+    print(
+        f"  done in {elapsed / 60:.1f} min — shape: {data_train['X'].shape}", flush=True
+    )
 
-print("\n[2/2] Embedding train soundscapes...", flush=True)
-data_train_soundscapes = collect_embeddings(df_train_soundscapes, df_taxonomy, model, chunk_samples)
-elapsed = time.time() - start
-print(f"  done in {elapsed/60:.1f} min — shape: {data_train_soundscapes['X'].shape}", flush=True)
+if COLLECT_SOUNDSCAPES:
+    print("\n[soundscapes] Embedding train soundscapes...", flush=True)
+    data_train_soundscapes = collect_embeddings(
+        df_train_soundscapes, df_taxonomy, model, chunk_samples
+    )
+    elapsed = time.time() - start
+    print(
+        f"  done in {elapsed / 60:.1f} min — shape: {data_train_soundscapes['X'].shape}",
+        flush=True,
+    )
 
 if SAVE_DATA:
     print("\nSaving results...", flush=True)
-    # save_results(data_train, "data_train", OUT_DIR)
-    save_results(data_train_soundscapes, "data_train_soundscapes", OUT_DIR)
+    if COLLECT_TRAIN:
+        save_results(data_train, "data_train", OUT_DIR)
+    if COLLECT_SOUNDSCAPES:
+        save_results(data_train_soundscapes, "data_train_soundscapes", OUT_DIR)
     print(f"  saved to results/{OUT_DIR}/", flush=True)
 
-print(f"\nTotal time: {(time.time() - start)/60:.1f} min", flush=True)
+print(f"\nTotal time: {(time.time() - start) / 60:.1f} min", flush=True)

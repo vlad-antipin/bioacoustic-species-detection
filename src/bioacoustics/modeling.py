@@ -55,15 +55,15 @@ def split_soundscapes(
     X = data_soundscapes["X"]
     y_class = data_soundscapes["y_class"]
     y_primary = data_soundscapes["y_primary"]
-    
+
     if not rare_first:
         file_ids = X.index.get_level_values(0).unique()
         file_ids = [str(i) for i in file_ids]
-        
+
         train_files, test_files = train_test_split(
             file_ids, test_size=test_size, random_state=random_state
         )
-        
+
         train_mask = X.index.get_level_values(0).isin(train_files)
         test_mask = X.index.get_level_values(0).isin(test_files)
     else:

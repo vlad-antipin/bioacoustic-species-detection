@@ -20,7 +20,9 @@ from .config import (
 
 def load_metadata():
     df_train = pd.read_csv(DATA_DIR / TRAIN_METADATA_FILE).drop_duplicates()
-    df_train_soundscapes = pd.read_csv(DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE).drop_duplicates()
+    df_train_soundscapes = pd.read_csv(
+        DATA_DIR / TRAIN_SOUNDSCAPES_METADATA_FILE
+    ).drop_duplicates()
     df_taxonomy = pd.read_csv(DATA_DIR / TAXONOMY_FILE)
 
     df_train.set_index(["filename"], inplace=True)
@@ -74,7 +76,7 @@ def load_audio(row: pd.Series, train=True):
 
 def save_results(result, fname, out_dir=None):
     if isinstance(result, pd.DataFrame):
-        result.to_csv(RESULTS_DIR/"tables"/f"{fname}.csv", header=False)
+        result.to_csv(RESULTS_DIR / "tables" / f"{fname}.csv", header=False)
     else:
         with open(RESULTS_DIR / out_dir / f"{fname}.pkl", "wb") as file:
             pickle.dump(result, file)
