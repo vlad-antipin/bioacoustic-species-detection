@@ -1,6 +1,5 @@
 """
 Run full feature extraction for train audio and train soundscapes.
-Designed to be launched as a background process so the Jupyter kernel stays free.
 
 Usage:
     nohup uv run python scripts/collect_features.py > local/feature_collection.log 2>&1 &

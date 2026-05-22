@@ -218,10 +218,7 @@ def plot_chroma_stft(
 
 def plot_onsets(audio, sr=SR):
 
-    # Compute onset envelope
     onset_env = librosa.onset.onset_strength(y=audio, sr=sr)
-
-    # Detect onset frames
     onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
 
     times = librosa.times_like(onset_env, sr=sr)
@@ -255,12 +252,9 @@ def plot_onsets(audio, sr=SR):
 
 def plot_importance_heatmap(df, top_n=20):
 
-    # Keep only top-N features by mean importance across classes
-
     top_features = df.mean().nlargest(top_n).index
     df_top = df[top_features]
 
-    # Plot
     fig, ax = plt.subplots(figsize=(14, max(8, len(df_top) * 0.12)))
     sns.heatmap(
         df_top,
@@ -311,10 +305,6 @@ def plot_species_distribution(
     counts_train, counts_sound, primary_to_class, class_colors=CLASS_COLORS
 ):
 
-    #
-    # Build dataframe using SOUND frequencies
-    # to define the global ordering
-    #
     df_order = pd.DataFrame(
         {
             "sound_count": counts_sound,
@@ -323,7 +313,6 @@ def plot_species_distribution(
 
     df_order["class"] = df_order.index.map(primary_to_class)
 
-    # same class order everywhere
     class_order = [
         "Amphibia",
         "Aves",
@@ -338,28 +327,19 @@ def plot_species_distribution(
         ordered=True,
     )
 
-    #
-    # Sort:
-    #   1. by class
-    #   2. by soundscape frequency
-    #
     df_order = df_order.sort_values(
         by=["class", "sound_count"],
         ascending=[True, False],
     )
 
-    # final common species ordering
     species_order = df_order.index
 
-    # Reindex both datasets with same ordering
     counts_train = counts_train.reindex(species_order)
     counts_sound = counts_sound.reindex(species_order)
 
-    # Colors
     classes = [primary_to_class[label] for label in species_order]
     colors = [class_colors[c] for c in classes]
 
-    # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(6, 4))
 
     counts_train.plot.bar(
@@ -383,7 +363,6 @@ def plot_species_distribution(
 
     axes[0].set_xticks([])
     axes[1].set_xticks([])
-    # Legend
     legend_elements = [
         Patch(facecolor=color, label=cls) for cls, color in class_colors.items()
     ]
@@ -696,9 +675,7 @@ def plot_multilabel_errors(y_true, y_proba, threshold=0.5, max_labels_grid=12):
     plot_multilabel_calibration(y_true, y_proba, max_labels=max_labels_grid)
 
 
-# ---------------------------------------------------------------------------
 # Many-label (200+) aggregate views — no per-label subplots
-# ---------------------------------------------------------------------------
 
 def plot_multilabel_metric_distribution(y_true, y_proba, bins=20):
     """Histograms of per-label AUC-ROC and AP for the many-label case."""
@@ -731,10 +708,7 @@ def plot_multilabel_metric_distribution(y_true, y_proba, bins=20):
 
 
 def plot_multilabel_metric_ranked(y_true, y_proba, metric="auc", top_n=20, bottom_n=20):
-    """Horizontal bar chart of top-N best and bottom-N worst labels by AUC or AP.
-
-    Avoids plotting all 200+ labels while surfacing where the model wins and loses.
-    """
+    """Horizontal bar chart of top-N best and bottom-N worst labels by AUC or AP."""
     labels, _, _, supported, aucs, aps = _multilabel_inputs(y_true, y_proba)
 
     scores = aucs if metric.lower() == "auc" else aps
@@ -782,11 +756,7 @@ def plot_multilabel_metric_ranked(y_true, y_proba, metric="auc", top_n=20, botto
 
 
 def plot_multilabel_pr_scatter(y_true, y_proba, threshold=0.5, annotate_n=10):
-    """Precision vs Recall scatter — one point per label.
-
-    Scales to 200+ labels. Points are sized by label support (number of positives)
-    and coloured by F1 score. The annotate_n lowest-F1 labels are annotated.
-    """
+    """Precision vs Recall scatter — one point per label, sized by support, coloured by F1."""
     labels, y_true_arr, y_proba_arr, supported, *_ = _multilabel_inputs(y_true, y_proba)
     y_pred_arr = (y_proba_arr >= threshold).astype(int)
 
@@ -880,14 +850,7 @@ def plot_multilabel_calibration_summary(y_true, y_proba, bins=10):
 
 
 def plot_multilabel_errors_large(y_true, y_proba, threshold=0.5, top_n=20, annotate_n=10):
-    """Aggregate multilabel error analysis for the many-label case (200+).
-
-    Uses summary views instead of per-label subplots:
-      1. AUC-ROC and AP histograms
-      2. Ranked top/bottom labels by AUC
-      3. Precision-Recall scatter (one point per label, coloured by F1)
-      4. ECE distribution (calibration summary)
-    """
+    """Aggregate multilabel error analysis (200+ labels): metric histograms, ranked bars, PR scatter, ECE."""
     plot_multilabel_metric_distribution(y_true, y_proba)
     plot_multilabel_metric_ranked(y_true, y_proba, metric="auc",
                                   top_n=top_n, bottom_n=top_n)
@@ -897,22 +860,15 @@ def plot_multilabel_errors_large(y_true, y_proba, threshold=0.5, top_n=20, annot
 
 
 def plot_corr_cirle(X, pca):
-    # Feature names
     features = X.columns
-
-    # Loadings
     loadings = pca.components_.T
-
-    # Scale by explained variance
     loadings = loadings * np.sqrt(pca.explained_variance_)
 
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    # Draw unit circle
     circle = plt.Circle((0, 0), 1, color="gray", fill=False)
     ax.add_artist(circle)
 
-    # Draw arrows
     for i, feature in enumerate(features):
         x_vector = loadings[i, 0]
         y_vector = loadings[i, 1]

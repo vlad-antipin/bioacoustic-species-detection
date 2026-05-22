@@ -76,7 +76,7 @@ PERCENTILES_BAND = [10, 50, 90]
 PERCENTILES_ONSET = [50, 90]
 PERCENTILES_ONSET_IOI = [10, 50, 90]
 
-# ===== Keyword arguments for used functions =====
+# Keyword arguments for used functions
 
 FRAME_KWARGS: Dict[str, Any] = dict(
     n_fft=N_FFT,

@@ -291,7 +291,6 @@ def add_chroma(audio, features, kwargs=CHROMA_STFT_KWARGS):
 
 
 def add_autocorrelation(audio, features):
-    # captures rhythmic patterns (e.g., repeating chirps)
     autocorr = np.correlate(audio, audio, mode="full")
     autocorr = autocorr[len(autocorr) // 2 :]
 
@@ -380,10 +379,10 @@ def get_chunk_features(audio: NDArray, sr=SR, center=True) -> pd.Series:
 
     add_onset_features(audio, features, include_percentiles=True)
 
-    # NOTE: not relevant in bioacoustics
+    # not relevant in bioacoustics
     # add_chroma(audio, features)
 
-    # NOTE: autocorrelation takes forever ...
+    # too slow for batch processing
     # add_autocorrelation(audio, features)
 
     return pd.Series(features)
@@ -398,12 +397,7 @@ def get_features(
     hop_duration=HOP_DURATION,
     top_fraction=TOP_FRACTION_CHUNKS,
 ) -> pd.Series:
-    """
-    Split recording into overlapping chunks, score each, keep top-k,
-    extract features, return median across selected chunks.
-
-    Returns empty series if no valid chunks are found.
-    """
+    """Split into overlapping chunks, keep top-k by quality score, return median features."""
     chunk_len = int(chunk_duration * sr)
     hop_len = int(hop_duration * sr)
 
@@ -423,15 +417,7 @@ def get_features(
 
 
 def augment_temporal_features(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Augments DataFrame with cyclical time and day-of-year features
-    derived from filenames in the index.
-
-    Expects a MultiIndex where the first level contains filenames with
-    stems formatted as '..._YYYYMMDD_HHMMSS'.
-
-    Adds columns: time_sin, time_cos, doy_sin, doy_cos
-    """
+    """Add cyclical time/day-of-year features; expects index filenames with stem '..._YYYYMMDD_HHMMSS'."""
     filenames = data.index.get_level_values(0)
 
     datetimes = pd.to_datetime(
@@ -453,13 +439,6 @@ def augment_temporal_features(data: pd.DataFrame) -> pd.DataFrame:
 
     return result
 
-
-# def augment_sites(data: pd.DataFrame) -> pd.DataFrame:
-#     filenames = data.index.get_level_values(0)
-#     result = data.copy()
-#     result["site"] = pd.Categorical([Path(f).stem.split("_")[3] for f in filenames])
-
-#     return result
 
 KNOWN_SITES = {'S03', 'S08', 'S09', 'S13', 'S15', 'S18', 'S19', 'S22', 'S23'}
 

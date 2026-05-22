@@ -5,7 +5,8 @@ import pandas as pd
 import numpy as np
 
 from sklearn.exceptions import UndefinedMetricWarning
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score, make_scorer
+from sklearn.model_selection import train_test_split, KFold, GroupKFold, GridSearchCV
 
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
@@ -13,6 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.multiclass import OneVsRestClassifier
 
@@ -33,6 +35,7 @@ class Classifier(Enum):
     RF = auto()
     LR = auto()
     XGBOOST = auto()
+    SVM = auto()
 
 
 def ignore_warnings():
@@ -46,34 +49,31 @@ def split_soundscapes(
 ):
     """Split soundscapes so train/test don't share files.
 
-    Can use a greedy rare-species-first strategy: files containing the rarest
-    species are assigned to the test set first so that as many species as
-    possible have at least one positive test example, avoiding NaN in macro
-    metrics.  Remaining test slots are filled at random.
+    When rare_first=True, greedily assigns files with the rarest species to the
+    test set first to maximise per-species test coverage.
     """
     X = data_soundscapes["X"]
     y_class = data_soundscapes["y_class"]
     y_primary = data_soundscapes["y_primary"]
-
+    
     if not rare_first:
-        # First level of MultiIndex is file identifier
         file_ids = X.index.get_level_values(0).unique()
-
+        file_ids = [str(i) for i in file_ids]
+        
         train_files, test_files = train_test_split(
             file_ids, test_size=test_size, random_state=random_state
         )
-
+        
         train_mask = X.index.get_level_values(0).isin(train_files)
         test_mask = X.index.get_level_values(0).isin(test_files)
     else:
         file_col = X.index.get_level_values(0)
         file_ids = file_col.unique()
+        file_ids = [str(i) for i in file_ids]
         n_test = max(1, round(len(file_ids) * test_size))
 
-        # Per-file species presence: (n_files, n_species) boolean DataFrame
         file_species = y_primary.groupby(level=0).any()
 
-        # How many files each species appears in
         species_file_count = file_species.sum(axis=0)
 
         # Rarity score per file = minimum file-count across its species
@@ -97,7 +97,6 @@ def split_soundscapes(
             else:
                 pool.append(fid)
 
-        # Fill remaining test slots at random
         rng = np.random.default_rng(random_state)
         rng.shuffle(pool)
         test_files.extend(pool[: n_test - len(test_files)])
@@ -125,12 +124,7 @@ def _sample_distribution_matched(
     weight_clip=20.0,
     smoothing=1e-2,
 ):
-    """Sample rows from source so per-species prevalence approximates target.
-
-    Uses per-sample importance weights derived from the ratio of target vs.
-    source marginal species prevalences. Weights are clipped for stability.
-    Returns integer positions into X_source.
-    """
+    """Sample rows from source weighted to match target per-species prevalence. Returns integer positions."""
     q = y_primary_target.mean().clip(smoothing, 1 - smoothing)
     p = y_primary_source.mean().clip(smoothing, 1 - smoothing)
 
@@ -158,12 +152,7 @@ def mix_soundscape_with_train(
     weight_clip=20.0,
     smoothing=1e-2,
 ) -> tuple:
-    """Enrich soundscape training data with distribution-matched samples from data_train.
-
-    Draws enrichment_factor * len(X_soundscape_train) rows from data_train,
-    weighted so their per-species prevalence approximates the soundscape
-    distribution. Returns shuffled (X_train, y_class_train, y_primary_train).
-    """
+    """Enrich soundscape training data with distribution-matched samples from data_train."""
     n_enrich = enrichment_factor * len(X_soundscape_train)
     chosen = _sample_distribution_matched(
         data_train["X"],
@@ -278,7 +267,7 @@ def split_data(
             frac=1, random_state=random_state
         )
         y_class_mixed = pd.concat([data_train["y_class"], data_soundscapes["y_class"]])
-        y_class_mixed = y_class_mixed.loc[X_mixed.index]  # align by index
+        y_class_mixed = y_class_mixed.loc[X_mixed.index]
 
         y_primary_mixed = pd.concat(
             [data_train["y_primary"], data_soundscapes["y_primary"]]
@@ -370,6 +359,10 @@ def get_prediction_pipeline(
         )
         params.update(clf_kwargs)
         clf = RandomForestClassifier(**params)
+    elif classifier == Classifier.SVM:
+        params = dict(kernel="linear", probability=True, class_weight="balanced")
+        params.update(clf_kwargs)
+        clf = SVC(**params)  # type: ignore[arg-type]
     elif classifier == Classifier.XGBOOST:
         params = dict(
             n_estimators=300,
@@ -408,6 +401,69 @@ def get_prediction_pipeline(
     return Pipeline(steps)
 
 
+def _macro_roc_auc(y_true, y_score):
+    y_arr = y_true.values if hasattr(y_true, "values") else y_true
+    support = y_arr.sum(axis=0) > 0
+    if support.sum() < 2:
+        return float("nan")
+    return roc_auc_score(y_arr[:, support], y_score[:, support], average="macro")
+
+
+def select_classifier(
+    X,
+    y,
+    param_grids: dict,
+    n_cv_folds: int = 3,
+    nan_strategy: str = "auto",
+    n_jobs: int = 3,
+    random_state: int = 42,
+    verbose: int = 1,
+) -> tuple:
+    """Run GridSearchCV for each classifier in param_grids; return the best one.
+
+    param_grids: {Classifier: {pipeline_param: [values]}}, params as "clf__estimator__<kwarg>".
+    Returns (best_classifier, best_params, gs_results); best_params is flat, ready as **clf_kwargs.
+    """
+    scorer = make_scorer(_macro_roc_auc, response_method="predict_proba")
+
+    if isinstance(X.index, pd.MultiIndex):
+        groups = X.index.get_level_values(0)
+        cv_split = GroupKFold(n_splits=n_cv_folds)
+    else:
+        groups = None
+        cv_split = KFold(n_splits=n_cv_folds, shuffle=True, random_state=random_state)
+
+    gs_results = {}
+    for clf_type, param_grid in param_grids.items():
+        if verbose:
+            print(f"\n--- {clf_type.name} ---")
+        pipeline = get_prediction_pipeline(clf_type, nan_strategy=nan_strategy)
+        pipeline.set_params(clf__n_jobs=1)  # avoid nested parallelism inside CV folds
+        gs = GridSearchCV(
+            pipeline,
+            param_grid,
+            scoring=scorer,
+            cv=cv_split,
+            refit=False,
+            verbose=verbose,
+            n_jobs=n_jobs,
+        )
+        gs.fit(X, y, groups=groups)
+        gs_results[clf_type] = gs
+        if verbose:
+            print(f"  Best: {gs.best_params_}  CV score: {gs.best_score_:.4f}")
+
+    best_classifier = max(gs_results, key=lambda c: gs_results[c].best_score_)
+    best_params = {
+        k.split("__")[-1]: v
+        for k, v in gs_results[best_classifier].best_params_.items()
+    }
+    if verbose:
+        print(f"\n=> Best: {best_classifier.name}, params: {best_params}")
+
+    return best_classifier, best_params, gs_results
+
+
 class HierarchicalMixtureOfExperts:
     def __init__(
         self, n_experts, classifier, nan_strategy: str = "auto", **clf_kwargs
@@ -428,7 +484,6 @@ class HierarchicalMixtureOfExperts:
         self.n_children = y_child.shape[1]
         for i, parent in enumerate(y_parent.columns):
             expert_mask = y_parent[parent] == 1
-            # restrain only to species that actually belong to this parent class
             child_mask = y_child[expert_mask].any(axis=0)
             self.child_masks.append(child_mask)
 

@@ -13,8 +13,10 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.4",
     "pandas>=3.0.2",
+    "pyarrow>=24.0.0",
     "scipy>=1.17.1",
     "seaborn>=0.13.2",
+    "tensorflow~=2.20.0",
     "tqdm-joblib>=0.0.5",
     "xgboost>=3.2.0",
 ]
