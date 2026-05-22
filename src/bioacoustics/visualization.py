@@ -284,7 +284,7 @@ def plot_importance_mean(df, top_n=20):
     plt.show()
 
 
-def plot_class_distribution(data_train, data_train_soundscapes):
+def plot_class_distribution(data_train, data_train_soundscapes, save_file=None):
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 
     data_train["y_class"].sum().plot.bar(ax=axes[0])
@@ -300,11 +300,13 @@ def plot_class_distribution(data_train, data_train_soundscapes):
     axes[1].tick_params(axis="x", rotation=0)
 
     fig.tight_layout()
+    if save_file:
+        fig.savefig(save_file)
     plt.show()
 
 
 def plot_species_distribution(
-    counts_train, counts_sound, primary_to_class, class_colors=CLASS_COLORS
+    counts_train, counts_sound, primary_to_class, class_colors=CLASS_COLORS, save_file=None
 ):
 
     df_order = pd.DataFrame(
@@ -368,11 +370,12 @@ def plot_species_distribution(
     fig.legend(handles=legend_elements)
 
     fig.tight_layout()
-
+    if save_file:
+        fig.savefig(save_file)
     plt.show()
 
 
-def plot_corr_matrix(corr_matrix):
+def plot_corr_matrix(corr_matrix, save_file=None):
     plt.figure(figsize=(20, 16))
 
     sns.heatmap(
@@ -383,6 +386,8 @@ def plot_corr_matrix(corr_matrix):
     )
 
     plt.title("Correlation Matrix")
+    if save_file:
+        plt.savefig(save_file)
     plt.show()
 
 
@@ -439,9 +444,8 @@ def plot_feature_distribution(
 
 
 def plot_dim_reduction(
-    X_pca, y, all_class_combinations=False, class_colors=CLASS_COLORS
+    X_pca, y, title=None, all_class_combinations=False, class_colors=CLASS_COLORS, save_file=None
 ):
-    # TODO: Investigate whether it overrides some of the class
     if all_class_combinations:
         y_labels = y.apply(
             lambda row: ", ".join(row.index[row == 1]),
@@ -457,19 +461,13 @@ def plot_dim_reduction(
     else:
         df_pca = (
             pd.DataFrame(
-                {
-                    "PC1": X_pca[:, 0],
-                    "PC2": X_pca[:, 1],
-                },
+                {"PC1": X_pca[:, 0], "PC2": X_pca[:, 1]},
                 index=y.index,
             )
             .join(y)
-            .melt(
-                id_vars=["PC1", "PC2"],
-                var_name="y_class",
-                value_name="active",
-            )
+            .melt(id_vars=["PC1", "PC2"], var_name="y_class", value_name="active")
             .query("active == 1")
+            .drop(columns="active")
         )
 
     plt.figure(figsize=(10, 8))
@@ -480,15 +478,17 @@ def plot_dim_reduction(
         plt.scatter(
             subset["PC1"],
             subset["PC2"],
-            color=class_colors[cls] if not all_class_combinations else None,
+            color=class_colors.get(cls, "gray") if not all_class_combinations else None,
             label=cls,
             alpha=0.5,
         )
 
     plt.xlabel("Dim 1")
     plt.ylabel("Dim 2")
-    plt.title("Feature Space Dimension Reduction")
+    plt.title(title if title else "Feature Space Dimension Reduction")
     plt.legend()
+    if save_file:
+        plt.savefig(save_file)
     plt.show()
 
 
@@ -1161,5 +1161,34 @@ def plot_location_map_species(
 
     if created_fig:
         plt.show()
+
+    return ax
+
+def plot_scree(explained_variance_ratio, title=None, ax=None, save_file=None):
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8, 4))
+
+    n = len(explained_variance_ratio)
+    cumulative = np.cumsum(explained_variance_ratio)
+
+    bars = ax.bar(range(1, n + 1), explained_variance_ratio, label="Individual")
+    ax.plot(range(1, n + 1), cumulative, marker="o", color="tab:red", label="Cumulative")
+
+    for bar, ratio in zip(bars, explained_variance_ratio):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.005,
+            f"{ratio:.1%}",
+            ha="center", va="bottom", fontsize=7,
+        )
+    ax.axhline(0.95, linestyle="--", color="gray", linewidth=0.8)
+
+    ax.set_xlabel("Principal Component")
+    ax.set_ylabel("Explained Variance Ratio")
+    ax.set_title(title if title else "Scree Plot")
+    ax.legend()
+
+    if save_file:
+        plt.savefig(save_file)
 
     return ax

@@ -20,6 +20,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "tensorflow~=2.20.0",
     "tqdm-joblib>=0.0.5",
+    "umap-learn>=0.5.12",
     "xgboost>=3.2.0",
 ]
 
